@@ -49,6 +49,7 @@ const authStore = defineStore("auth", {
     async getLoginUserInfo() {
       const res: any = await getLoginUserInfo();
       console.log("用户信息数据", res.data);
+      //TODO: 这里需要修改
       this.roleList = res.data.roles;
       this.buttonList = res.data.buttons;
       this.loginUser = res.data.loginUser;

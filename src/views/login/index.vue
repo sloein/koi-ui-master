@@ -60,10 +60,10 @@
             }}</el-button>
           </el-form-item>
         </el-form>
-        <!-- 备案号-->
+        <!-- github-->
         <div class="beianhao select-none lg:hidden">
-          <a class="chroma-text" href="https://beian.miit.gov.cn/" target="_blank"
-            >{{ $t("login.beianhao") }}：豫ICP备2022022094号-1</a
+          <a class="chroma-text" href="https://github.com/Sloein" target="_blank"
+            >{{ $t("login.github") }}</a
           >
         </div>
       </el-col>
