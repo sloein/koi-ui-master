@@ -56,6 +56,7 @@ import { generateUUID } from "@/utils";
 import koi from "@/utils/axios.ts";
 import { ElNotification, formContextKey, formItemContextKey } from "element-plus";
 import type { UploadProps, UploadRequestOptions } from "element-plus";
+import { updateUserInfo } from "@/api/system/user";
 
 interface IUploadImageProps {
   imageUrl: string; // 图片地址 ==> 必传
@@ -74,11 +75,11 @@ interface IUploadImageProps {
 // 接收父组件参数
 const props = withDefaults(defineProps<IUploadImageProps>(), {
   imageUrl: "",
-  action: "/koi/file/uploadFile",
+  action: "/user/upload",
   drag: true,
   disabled: false,
   fileSize: 3,
-  fileType: () => ["image/webp", "image/jpg", "image/jpeg", "image/png", "image/gif"],
+  fileType: () => ["image/jpg", "image/jpeg", "image/png", "image/gif"],
   height: "120px",
   width: "120px",
   borderRadius: "6px",
@@ -116,11 +117,17 @@ const handleHttpUpload = async (options: UploadRequestOptions) => {
     background: "rgba(0,0,0,.2)"
   });
   try {
-    if (props.fileParam == "-1" || props.fileParam == "") {
-      props.fileParam === "-1";
-    }
-    const res: any = await koi.upload(props.action + "/" + props.fileSize + "/" + props.folderName + "/" + props.fileParam, formData);
-    emit("update:imageUrl", import.meta.env.VITE_SERVER + res.data.fileUploadPath);
+    const res: any = await koi.upload("/user/upload", formData);
+    
+    // 后端直接返回文件路径字符串，不是对象
+    const imagePath = typeof res === 'string' ? res : res.data;
+    
+    console.log(import.meta.env.VITE_SERVER + '/'+imagePath);
+    // 更新图片URL，服务器基础路径 + 图片路径
+    emit("update:imageUrl", import.meta.env.VITE_SERVER + '/' + imagePath);
+    await updateUserInfo({
+      avatar: import.meta.env.VITE_SERVER + '/' +imagePath
+    });
     loadingInstance.close();
     // 调用 el-form 内部的校验方法[可自动校验]
     formItemContext?.prop && formContext?.validateField([formItemContext.prop as string]);
@@ -146,23 +153,27 @@ const handleEditImage = () => {
  * @param rawFile 选择的文件
  * */
 const beforeUpload: UploadProps["beforeUpload"] = rawFile => {
-  const imgSize = rawFile.size / 1024 / 1024 < props.fileSize;
-  const imgType = props.fileType.includes(rawFile.type);
-  if (!imgType)
+  // 检查文件大小不超过3MB
+  const imgSize = rawFile.size / 1024 / 1024 < 3;
+  
+  // 检查文件类型
+  const fileExtension = rawFile.name.toLowerCase().split('.').pop();
+  const allowedExtensions = ['png', 'jpg', 'jpeg', 'gif'];
+  const isValidType = allowedExtensions.includes(fileExtension || '');
+  
+  if (!isValidType)
     ElNotification({
       title: "温馨提示",
-      message: "上传图片不符合所需的格式！",
+      message: "只能上传PNG、JPG或GIF格式的图片！",
       type: "warning"
     });
   if (!imgSize)
-    setTimeout(() => {
-      ElNotification({
-        title: "温馨提示",
-        message: `上传图片大小不能超过 ${props.fileSize}M！`,
-        type: "warning"
-      });
-    }, 0);
-  return imgType && imgSize;
+    ElNotification({
+      title: "温馨提示",
+      message: "上传图片大小不能超过3MB！",
+      type: "warning"
+    });
+  return isValidType && imgSize;
 };
 
 /** 图片上传成功 */

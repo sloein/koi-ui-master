@@ -155,12 +155,21 @@ class Yu {
   delete<T = Result>(url: string): Promise<T> {
     return this.instance.delete(url);
   };
-  // 图片上传
-  upload<T = Result>(url: string, formData?: object): Promise<T> {
-    return this.instance.post(url, formData, {
-      headers: {
-        "Content-Type": "multipart/form-data"
-      }
+  // 文件上传
+  upload = (url: string, file: any) => {
+    return new Promise((resolve, reject) => {
+      this.instance
+        .post(url, file, {
+          headers: {
+            "Content-Type": "multipart/form-data",
+          },
+        })
+        .then((res) => {
+          resolve(res);
+        })
+        .catch((error) => {
+          reject(error);
+        });
     });
   };
   // 导出Excel

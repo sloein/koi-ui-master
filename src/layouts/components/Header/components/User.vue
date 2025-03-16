@@ -1,13 +1,19 @@
 <template>
   <!-- 头像 -->
-  <el-image class="w-34px h-34px rounded-full select-none user-avatar" :src="avatar">
+  <el-image class="w-34px h-34px rounded-full select-none user-avatar" :src="loginUser?.avatar || errorAvatar">
     <template #error>
       <el-image class="w-34px h-34px rounded-full select-none user-avatar" :src="errorAvatar"></el-image>
     </template>
   </el-image>
-  <el-dropdown class="m-l-10px" :hide-on-click="false" @command="handleCommand">
+  <el-dropdown 
+    class="m-l-10px" 
+    trigger="click"
+    :hide-timeout="50"
+    placement="bottom-end"
+    @command="handleCommand"
+  >
     <div class="koi-dropdown">
-      <div class="max-w-113px text-14px m-r-6px line-clamp-1 select-none">王将(管理员)</div>
+      <div class="max-w-113px text-14px m-r-6px line-clamp-1 select-none">{{ loginUser?.nickName }}</div>
       <el-icon><arrow-down /></el-icon>
     </div>
     <template #dropdown>
@@ -20,12 +26,26 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from "vue";
+import {  computed } from "vue";
 import { koiSessionStorage, koiLocalStorage } from "@/utils/storage.ts";
 import { LOGIN_URL } from "@/config";
 import { useRouter } from "vue-router";
-
+import useAuthStore from "@/stores/modules/auth";
+import useUserStore from "@/stores/modules/user";
 const router = useRouter();
+const authStore = useAuthStore();
+
+const userStore = useUserStore();
+// 获取用户信息
+const loginUser = computed(() => userStore.loginUser);
+console.log("用户信息", userStore.loginUser);
+// 获取角色名称
+const roleName = computed(() => {
+  if (authStore.roleList && authStore.roleList.length > 0) {
+    return authStore.roleList[0].roleName || '管理员';
+  }
+  return '管理员';
+});
 
 // 退出登录
 const handleLayout = () => {
@@ -38,11 +58,9 @@ const handleLayout = () => {
   // 退出登录。必须使用replace把页面缓存刷掉。
   window.location.replace(LOGIN_URL);
 };
-// 用户头像
-const avatar = ref(
-  "https://gimg2.baidu.com/image_search/src=http%3A%2F%2Fsafe-img.xhscdn.com%2Fbw1%2Fae90b4c7-98b6-4a47-b1b3-9ee8bc71acf6%3FimageView2%2F2%2Fw%2F1080%2Fformat%2Fjpg&refer=http%3A%2F%2Fsafe-img.xhscdn.com&app=2002&size=f9999,10000&q=a80&n=0&g=0n&fmt=auto?sec=1692146441&t=6fca60f3a0d323869b81d8fb53b5dd1b"
-);
+
 const errorAvatar = "https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726f1epng.png";
+
 // 下拉折叠
 const handleCommand = (command: string | number) => {
   switch (command) {

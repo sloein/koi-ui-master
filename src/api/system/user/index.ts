@@ -6,9 +6,11 @@ import type { ILoginParams } from "./type.ts";
 // 统一管理接口
 enum API {
   KOI_LOGIN = "/user/login",
-  KOI_DYNAMIC_DATA = "/koi/sysLoginUser/getLoginUserInfo",
+  KOI_DYNAMIC_DATA = "/user/info",
+  REGISTER = "/user/register",
   KOI_USERINFO = "/user/info",
-  LIST_PAGE = "/koi/sysLoginUser/listPage",
+  REGISTER_CAPTCHA = "/email/register-captcha",
+  LIST_PAGE = "/user/list",
   GET_BY_ID = "/koi/sysLoginUser/getById",
   UPDATE = "/koi/sysLoginUser/update",
   ADD = "/koi/sysLoginUser/add",
@@ -22,8 +24,15 @@ export const koiLogin = (params: ILoginParams) => {
   return koi.post(API.KOI_LOGIN, params);
 };
 
+// 注册接口方法
+export const koiRegister = (params: any) => {
+  return koi.post(API.REGISTER, params);
+};
+
+
 // 通过token查询相关用户信息、按钮权限、菜单权限数据，token必须有效
 export const koiDynamicData = () => {
+  console.log("通过token查询相关用户信息、按钮权限、菜单权限数据", API.KOI_DYNAMIC_DATA);
   return koi.get(API.KOI_DYNAMIC_DATA);
 };
 
@@ -35,6 +44,11 @@ export const koiUserInfo = (params: ILoginParams) => {
 // 多条件分页查询数据
 export const listPage = (params: any) => {
   return koi.get(API.LIST_PAGE, params);
+};
+
+// 发送注册验证码
+export const sendRegisterCaptcha = (params: any) => {
+  return koi.get(API.REGISTER_CAPTCHA, params);
 };
 
 // 根据ID进行查询
@@ -71,4 +85,14 @@ export const batchDelete = (ids: any) => {
 // 修改状态
 export const updateStatus = (id: any, status: any) => {
   return koi.post(API.UPDATE_STATUS + "/" + id + "/" + status); // 第一种传参方式
+};
+
+// 更新用户个人信息
+export const updateUserInfo = (data: any) => {
+  return koi.post("/user/update", data);
+};
+
+// 修改用户密码
+export const updatePassword = (data: any) => {
+  return koi.post("/koi/sysUser/updatePassword", data);
 };

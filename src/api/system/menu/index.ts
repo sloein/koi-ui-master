@@ -12,7 +12,7 @@ enum API {
   BATCH_DELETE = "/koi/sysMenu/batchDelete",
   UPDATE_STATUS = "/koi/sysMenu/updateStatus",
   UPDATE_SPREAD = "/koi/sysMenu/updateSpread",
-  LIST_ROUTERS = "/koi/sysMenu/listRouters",
+  LIST_ROUTERS = "/user/listRouters",
   LIST_MENU_NORMAL = "/koi/sysMenu/listMenuNormal",
   LIST_MENUIDS_BY_ROLEID = "/koi/sysMenu/listMenuIdsByRoleId",
   SAVE_ROLE_MENU = "/koi/sysMenu/saveRoleMenu"
@@ -64,8 +64,8 @@ export const updateSpread = (id: any, spread: any) => {
 };
 
 // 获取用户左侧菜单数据
-export const listRouters = (id: any) => {
-  return koi.get(API.LIST_ROUTERS + "/" + id);
+export const listRouters = () => {
+  return koi.get(API.LIST_ROUTERS );
 };
 
 // 获取正常所有菜单数据

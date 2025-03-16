@@ -70,7 +70,7 @@ interface IUploadImagesProps {
 
 const props = withDefaults(defineProps<IUploadImagesProps>(), {
   fileList: () => [],
-  action: "/koi/file/uploadFile",
+  action: "/user/upload",
   drag: true,
   disabled: false,
   limit: 5,

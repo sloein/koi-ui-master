@@ -4,7 +4,7 @@
     <el-button type="warning" icon="AlarmClock" plain v-throttle:3000="handleThrottle">节流</el-button>
     <div class="h-20px"></div>
     <div class="h-20px"></div>
-    <div class="w-500px h-60px bg-gray-100" v-waterMarker="{ text: 'YU-ADMIN', textColor: '#D9D9D9' }">水印指令</div>
+    <div class="w-500px h-60px bg-gray-100" v-waterMarker="{ text: 'SS-ADMIN', textColor: '#D9D9D9' }">水印指令</div>
   </div>
 </template>
 
