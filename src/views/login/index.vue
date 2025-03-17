@@ -16,12 +16,12 @@
         </div>
         <!-- 备案号-->
         <div class="beianhao select-none <md:hidden">
-          <a class="chroma-text" href="https://beian.miit.gov.cn/" target="_blank"
-            >{{ $t("login.beianhao") }}：豫ICP备2022022094号-1</a
-          >
+          <a class="chroma-text" href="https://beian.miit.gov.cn/" target="_blank">{{ $t("login.beianhao")
+          }}：豫ICP备2022022094号-1</a>
         </div>
       </el-col>
-      <el-col :lg="8" :md="12" :sm="9" :xs="24" class="dark:bg-#161616 bg-gray-100 flex flex-items-center flex-justify-center flex-col">
+      <el-col :lg="8" :md="12" :sm="9" :xs="24"
+        class="dark:bg-#161616 bg-gray-100 flex flex-items-center flex-justify-center flex-col">
         <div class="flex flex-items-center">
           <el-image class="rounded-full w-36px h-36px" :src="logo" />
           <div class="ml-6px font-bold text-xl">{{ loginTitle || "KOI-ADMIN 管理平台" }}</div>
@@ -34,37 +34,26 @@
         <!-- 输入框盒子 -->
         <el-form ref="loginFormRef" :model="loginForm" :rules="loginRules" class="w-260px">
           <el-form-item prop="username">
-            <el-input type="text" :placeholder="$t('login.username')" :suffix-icon="User" v-model="loginForm.username" />
+            <el-input type="text" :placeholder="$t('login.username')" :suffix-icon="User"
+              v-model="loginForm.username" />
           </el-form-item>
           <el-form-item prop="password">
-            <el-input
-              type="password"
-              :placeholder="$t('login.password')"
-              show-password
-              :suffix-icon="Lock"
-              v-model="loginForm.password"
-            />
+            <el-input type="password" :placeholder="$t('login.password')" show-password :suffix-icon="Lock"
+              v-model="loginForm.password" />
           </el-form-item>
           <!-- 登录按钮 -->
           <el-form-item>
-            <el-button
-              type="primary"
-              v-if="!loading"
-              class="w-245px bg-[--el-color-primary]"
-              round
-              v-throttle:3000="handleKoiLogin"
-              >{{ $t("login.in") }}</el-button
-            >
+            <el-button type="primary" v-if="!loading" class="w-245px bg-[--el-color-primary]" round
+              v-throttle:3000="handleKoiLogin">{{ $t("login.in") }}</el-button>
             <el-button type="primary" v-else class="w-245px bg-[--el-color-primary]" round :loading="loading">{{
               $t("login.center")
             }}</el-button>
           </el-form-item>
         </el-form>
-        <!-- github-->
+        <!-- 备案号-->
         <div class="beianhao select-none lg:hidden">
-          <a class="chroma-text" href="https://github.com/Sloein" target="_blank"
-            >{{ $t("login.github") }}</a
-          >
+          <a class="chroma-text" href="https://beian.miit.gov.cn/" target="_blank">{{ $t("login.beianhao")
+          }}：豫ICP备2022022094号-1</a>
         </div>
       </el-col>
     </el-row>
@@ -132,7 +121,7 @@ loginRules = computed(() => {
     return reactive<FormRules<ILoginUser>>({
       username: [{ required: true, message: "The user name cannot be empty", trigger: "blur" }],
       password: [{ required: true, message: "The password cannot be empty", trigger: "blur" }],
-  
+
     });
   } else {
     return reactive<FormRules<ILoginUser>>({
@@ -183,14 +172,14 @@ const handleKoiLogin = () => {
   (loginFormRef.value as any).validate(async (valid: any, fields: any) => {
     const username = loginForm.username;
     const password = loginForm.password;
- 
+
     if (valid) {
       loading.value = true;
       try {
         // 1、执行登录接口
         const res: any = await koiLogin({ username, password });
         userStore.setToken(res.data.tokenValue);
-        
+
         // 2、添加动态路由 AND 用户按钮 AND 角色信息 AND 用户个人信息
         if (userStore?.token) {
           await initDynamicRouter();
@@ -246,9 +235,11 @@ const handleKoiLogin = () => {
   0% {
     transform: translateY(0);
   }
+
   50% {
     transform: translateY(-20px);
   }
+
   100% {
     transform: translateY(0);
   }
