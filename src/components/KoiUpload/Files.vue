@@ -82,7 +82,7 @@ const props = withDefaults(defineProps<IUploadFilesProps>(), {
   limit: 5,
   disabled: false,
   fileSize: 10,
-  action: "/koi/file/uploadFile",
+  action: "/user/upload",
   fileList: [],
   isDownload: false,
   folderName: "files",

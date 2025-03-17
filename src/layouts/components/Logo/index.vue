@@ -4,7 +4,7 @@
       <el-image
         :src="logoUrl"
         fit="cover"
-        class="w-100% h-100% rounded-full"
+        class="w-100% h-100% "
       >
         <template #error>
           <el-icon class="w-100% h-100% rounded-full text-[--el-color-primary]" :size="34">

@@ -12,35 +12,25 @@
             @keyup.enter.native="handleListPage"
           ></el-input>
         </el-form-item>
-        <el-form-item label="用户名称" prop="userName">
+        <el-form-item label="用户名称" prop="nickName">
           <el-input
             placeholder="请输入用户名称"
-            v-model="searchParams.userName"
+            v-model="searchParams.nickName"
             clearable
             style="width: 200px"
             @keyup.enter.native="handleListPage"
           ></el-input>
         </el-form-item>
-        <el-form-item label="手机号" prop="phone">
+        <el-form-item label="邮箱" prop="email">
           <el-input
-            placeholder="请输入手机号"
-            v-model="searchParams.phone"
+            placeholder="请输入邮箱"
+            v-model="searchParams.email"
             clearable
             style="width: 200px"
             @keyup.enter.native="handleListPage"
           ></el-input>
         </el-form-item>
-        <el-form-item label="登录时间" prop="loginTime">
-          <el-date-picker
-            v-model="dateRange"
-            type="datetimerange"
-            value-format="YYYY-MM-DD HH:mm:ss"
-            start-placeholder="开始日期"
-            range-separator="至"
-            end-placeholder="结束日期"
-            :default-time="[new Date(2000, 1, 1, 0, 0, 0), new Date(2000, 1, 1, 23, 59, 59)]"
-          />
-        </el-form-item>
+      
         <el-form-item>
           <el-button type="primary" icon="search" plain v-debounce="handleSearch">搜索</el-button>
           <el-button type="danger" icon="refresh" plain v-throttle="resetSearch">重置</el-button>
@@ -75,12 +65,12 @@
       <el-table
         v-loading="loading"
         border
-        :data="tableList.slice((searchParams.pageNo - 1) * searchParams.pageSize, searchParams.pageNo * searchParams.pageSize)"
+        :data="tableList"
         empty-text="暂时没有数据哟🌻"
         @selection-change="handleSelectionChange"
       >
         <el-table-column type="selection" width="55" align="center" />
-        <el-table-column label="序号" prop="userId" width="80px" align="center" type="index"></el-table-column>
+        <el-table-column label="序号" prop="id" width="80px" align="center" type="index"></el-table-column>
         <el-table-column
           label="登录账号"
           prop="username"
@@ -95,11 +85,7 @@
                 class="rounded-full w-36px h-36px"
                 :preview-teleported="true"
                 :preview-src-list="[scope.row.avatar]"
-                :src="
-                  scope.row.avatar != null && scope.row.avatar != ''
-                    ? scope.row.avatar
-                    : 'https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726f1epng.png'
-                "
+                :src="scope.row.avatar"
               >
                 <template #error>
                   <el-icon class="text-[--el-color-primary]" :size="36">
@@ -112,33 +98,27 @@
         </el-table-column>
         <el-table-column
           label="用户名称"
-          prop="userName"
+          prop="nickName"
           width="120px"
           align="center"
           :show-overflow-tooltip="true"
         ></el-table-column>
         <el-table-column label="邮箱" prop="email" width="220px" align="center" :show-overflow-tooltip="true"></el-table-column>
-        <el-table-column label="手机号" prop="phone" width="150px" align="center" :show-overflow-tooltip="true"></el-table-column>
-        <el-table-column label="用户类型" prop="userType" width="100px" align="center">
+        <el-table-column
+          label="手机号"
+          prop="phoneNumber"
+          width="150px"
+          align="center"
+          :show-overflow-tooltip="true"
+        ></el-table-column>
+        <el-table-column label="用户状态" prop="isFrozen" width="100px" align="center">
           <template #default="scope">
-            <KoiTag :tagOptions="userTypeOptions" :value="scope.row.userType"></KoiTag>
-          </template>
-        </el-table-column>
-        <el-table-column label="用户性别" prop="sex" width="100px" align="center">
-          <template #default="scope">
-            <KoiTag :tagOptions="userSexOptions" :value="scope.row.sex"></KoiTag>
-          </template>
-        </el-table-column>
-        <!-- 注意：如果后端数据返回的是字符串"0" OR "1"，这里的active-value AND inactive-value不需要加冒号，会认为是字符串，否则：后端返回是0 AND 1数字，则需要添加冒号 -->
-        <el-table-column label="用户状态" prop="userStatus" width="100px" align="center">
-          <template #default="scope">
-            <!-- {{ scope.row.userStatus }} -->
             <el-switch
-              v-model="scope.row.userStatus"
+              v-model="scope.row.isFrozen"
               active-text="启用"
-              inactive-text="停用"
-              active-value="0"
-              inactive-value="1"
+              inactive-text="冻结"
+              :active-value="false"
+              :inactive-value="true"
               :inline-prompt="true"
               @change="handleSwitch(scope.row)"
             >
@@ -205,27 +185,25 @@
           <el-form ref="formRef" :rules="rules" :model="form" label-width="80px" status-icon>
             <el-row>
               <el-col :sm="{ span: 24 }" :xs="{ span: 24 }">
-                <el-form-item label="用户名称" prop="userTitle">
-                  <el-input v-model="form.userTitle" placeholder="请输入用户名称" clearable />
+                <el-form-item label="用户名" prop="username">
+                  <el-input v-model="form.username" placeholder="请输入用户名" clearable />
                 </el-form-item>
               </el-col>
               <el-col :sm="{ span: 24 }" :xs="{ span: 24 }">
-                <el-form-item label="用户类型" prop="userType">
-                  <el-select placeholder="请选择用户类型" v-model="form.userType" clearable>
-                    <el-option
-                      v-for="item in userTypeOptions"
-                      :key="item.dictValue"
-                      :label="item.dictLabel"
-                      :value="item.dictValue"
-                    />
-                  </el-select>
+                <el-form-item label="昵称" prop="nickName">
+                  <el-input v-model="form.nickName" placeholder="请输入昵称" clearable />
                 </el-form-item>
               </el-col>
               <el-col :sm="{ span: 24 }" :xs="{ span: 24 }">
-                <el-form-item label="用户状态" prop="userStatus">
-                  <el-select v-model="form.userStatus" placeholder="请选择用户状态" clearable>
-                    <el-option label="启用" value="0" />
-                    <el-option label="停用" value="1" />
+                <el-form-item label="邮箱" prop="email">
+                  <el-input v-model="form.email" placeholder="请输入邮箱" clearable />
+                </el-form-item>
+              </el-col>
+              <el-col :sm="{ span: 24 }" :xs="{ span: 24 }">
+                <el-form-item label="用户状态" prop="isFrozen">
+                  <el-select v-model="form.isFrozen" placeholder="请选择用户状态" clearable>
+                    <el-option label="启用" :value="false" />
+                    <el-option label="冻结" :value="true" />
                   </el-select>
                 </el-form-item>
               </el-col>
@@ -238,22 +216,15 @@
                     </template>
                     <template #tip>图片最大为 3M</template>
                   </KoiUploadImage>
-                  <!-- <el-input v-model="form.avatar" placeholder="请输入用户头像地址" clearable /> -->
                 </el-form-item>
               </el-col>
               <el-col :sm="{ span: 24 }" :xs="{ span: 24 }">
-                <el-form-item label="手机号" prop="phone">
-                  <el-input v-model="form.phone" placeholder="请输入手机号"></el-input>
-                </el-form-item>
-              </el-col>
-              <el-col :sm="{ span: 24 }" :xs="{ span: 24 }">
-                <el-form-item label="用户备注" prop="remark">
-                  <el-input v-model="form.remark" :rows="5" type="textarea" placeholder="请输入用户备注" />
+                <el-form-item label="手机号" prop="phoneNumber">
+                  <el-input v-model="form.phoneNumber" placeholder="请输入手机号"></el-input>
                 </el-form-item>
               </el-col>
             </el-row>
           </el-form>
-          {{ form }}
         </template>
       </KoiDrawer>
 
@@ -309,214 +280,21 @@ const loading = ref(false);
 // 是否显示搜索表单[默认显示]
 const showSearch = ref<boolean>(true); // 默认显示搜索条件
 // 表格数据
-const tableList = ref<any>([
-  {
-    userId: 1,
-    username: "YU-ADMIN",
-    userName: "超级管理员",
-    userType: "1",
-    email: "YU-ADMIN666@163.com",
-    phone: "18888888888",
-    sex: "1",
-    avatar: "https://pic4.zhimg.com/v2-702a23ebb518199355099df77a3cfe07_b.webp",
-    userStatus: "0",
-    remark: "管理员",
-    createTime: "2023-08-06 04:00:00"
-  },
-  {
-    userId: 2,
-    username: "KOI",
-    userName: "小锦鲤",
-    userType: "1",
-    email: "koi@qq.com",
-    phone: "18666666666",
-    sex: "1",
-    avatar: "https://pic2.zhimg.com/v2-44ce1b82f7e68de4078bf513221619e1_b.webp",
-    userStatus: "0",
-    remark: "管理员",
-    createTime: "2023-08-07 04:00:00"
-  },
-  {
-    userId: 3,
-    username: "YXT",
-    userName: "于金金",
-    userType: "2",
-    email: "koi@qq.com",
-    phone: "18666666666",
-    sex: "2",
-    avatar: "https://pic1.zhimg.com/v2-3cbc889feac057cc7fb85a40c82598dc_b.webp",
-    userStatus: "0",
-    remark: "管理员",
-    createTime: "2023-08-08 04:00:00"
-  },
-  {
-    userId: 4,
-    username: "orange",
-    userName: "迪迦",
-    userType: "1",
-    email: "YU-ADMIN666@163.com",
-    phone: "18888888888",
-    sex: "1",
-    avatar: "https://pic3.zhimg.com/v2-b6c350529f3c06c8a90d886c311f3866_b.webp",
-    userStatus: "0",
-    remark: "远古时代战士",
-    createTime: "2023-08-06 04:00:00"
-  },
-  {
-    userId: 5,
-    username: "apple",
-    userName: "盖亚",
-    userType: "1",
-    email: "koi@qq.com",
-    phone: "18666666666",
-    sex: "1",
-    avatar: "https://pic2.zhimg.com/v2-430e1a7dd0508a0b4b01dca9b94b22f5_b.webp",
-    userStatus: "0",
-    remark: "远古时代战士",
-    createTime: "2023-08-07 04:00:00"
-  },
-  {
-    userId: 6,
-    username: "banana",
-    userName: "阿古茹",
-    userType: "2",
-    email: "koi@qq.com",
-    phone: "18666666666",
-    sex: "2",
-    avatar: "https://pic3.zhimg.com/v2-6e8ff25c222b6302cb836c9f6b013e7e_b.webp",
-    userStatus: "0",
-    remark: "远古时代战士",
-    createTime: "2023-08-08 04:00:00"
-  },
-  {
-    userId: 7,
-    username: "pear",
-    userName: "帝骑",
-    userType: "1",
-    email: "YU-ADMIN666@163.com",
-    phone: "18888888888",
-    sex: "1",
-    avatar: "https://pic2.zhimg.com/v2-d75d120cdab34142933ad9df18508ad1_b.webp",
-    userStatus: "0",
-    remark: "假面骑士",
-    createTime: "2023-08-06 04:00:00"
-  },
-  {
-    userId: 8,
-    username: "pineapple",
-    userName: "创骑",
-    userType: "1",
-    email: "koi@qq.com",
-    phone: "18666666666",
-    sex: "1",
-    avatar: "https://pic3.zhimg.com/v2-a42559223697c17188a75ad3a10e1cea_b.webp",
-    userStatus: "0",
-    remark: "假面骑士",
-    createTime: "2023-08-07 04:00:00"
-  },
-  {
-    userId: 9,
-    username: "mango",
-    userName: "时王",
-    userType: "2",
-    email: "koi@qq.com",
-    phone: "18666666666",
-    sex: "2",
-    avatar: "https://img0.baidu.com/it/u=1752705848,3929873216&fm=253&app=138&size=w931&n=0&f=JPEG",
-    userStatus: "0",
-    remark: "假面骑士",
-    createTime: "2023-08-08 04:00:00"
-  },
-  {
-    userId: 10,
-    username: "plum",
-    userName: "海绵宝宝",
-    userType: "1",
-    email: "YU-ADMIN666@163.com",
-    phone: "18888888888",
-    sex: "1",
-    avatar: "https://img1.baidu.com/it/u=3941674148,2170642163&fm=253&fmt=auto&app=138&f=JPEG?w=255&h=255",
-    userStatus: "0",
-    remark: "地底世界",
-    createTime: "2023-08-06 04:00:00"
-  },
-  {
-    userId: 11,
-    username: "watermelon",
-    userName: "派大星",
-    userType: "1",
-    email: "koi@qq.com",
-    phone: "18666666666",
-    sex: "1",
-    avatar: "https://img2.baidu.com/it/u=1519337523,3739613381&fm=253&fmt=auto&app=120&f=JPEG?w=600&h=600",
-    userStatus: "0",
-    remark: "地底世界",
-    createTime: "2023-08-07 04:00:00"
-  },
-  {
-    userId: 12,
-    username: "peach",
-    userName: "章鱼哥",
-    userType: "2",
-    email: "koi@qq.com",
-    phone: "18666666666",
-    sex: "2",
-    avatar: "https://img2.baidu.com/it/u=71901679,703168528&fm=253&fmt=auto&app=138&f=JPEG?w=500&h=500",
-    userStatus: "0",
-    remark: "地底世界",
-    createTime: "2023-08-08 04:00:00"
-  },
-  {
-    userId: 13,
-    username: "grape",
-    userName: "光头强",
-    userType: "1",
-    email: "YU-ADMIN666@163.com",
-    phone: "18888888888",
-    sex: "1",
-    avatar: "https://img0.baidu.com/it/u=1121602739,1172990093&fm=253&fmt=auto&app=138&f=JPEG?w=380&h=378",
-    userStatus: "0",
-    remark: "熊出没",
-    createTime: "2023-08-06 04:00:00"
-  },
-  {
-    userId: 14,
-    username: "Blackberry",
-    userName: "熊大",
-    userType: "1",
-    email: "koi@qq.com",
-    phone: "18666666666",
-    sex: "1",
-    avatar: "https://img1.baidu.com/it/u=1544796506,2220725573&fm=253&fmt=auto&app=120&f=JPEG?w=501&h=500",
-    userStatus: "0",
-    remark: "熊出没",
-    createTime: "2023-08-07 04:00:00"
-  },
-  {
-    userId: 15,
-    username: "Blueberry",
-    userName: "熊二",
-    userType: "2",
-    email: "koi@qq.com",
-    phone: "18666666666",
-    sex: "2",
-    avatar: "https://img1.baidu.com/it/u=550431475,3093096287&fm=253&fmt=auto&app=138&f=JPEG?w=500&h=514",
-    userStatus: "0",
-    remark: "熊出没",
-    createTime: "2023-08-08 04:00:00"
-  }
-]);
+const tableList = ref<any>([]);
 
 // 查询参数
 const searchParams = ref({
   pageNo: 1, // 第几页
   pageSize: 10, // 每页显示多少条
   username: "",
-  userName: "",
-  phone: ""
+  nickName: "",
+  email: ""
 });
 
 const total = ref<number>(0);
+
+// 添加baseUrl
+// const baseUrl = import.meta.env.VITE_SERVER;
 
 /** 重置搜索参数 */
 const resetSearchParams = () => {
@@ -524,8 +302,8 @@ const resetSearchParams = () => {
     pageNo: 1,
     pageSize: 10,
     username: "",
-    userName: "",
-    phone: ""
+    nickName: "",
+    email: ""
   };
   dateRange.value = [];
 };
@@ -552,21 +330,19 @@ const dateRange = ref();
 // 分页查询，@current-change AND @size-change都会触发分页，调用后端分页接口
 /** 数据表格 */
 const handleListPage = async () => {
-  total.value = 15;
-  // try {
-  //   loading.value = true;
-  //   tableList.value = []; // 重置表格数据
-  //   const res: any = await listPage(
-  //     koiDatePicker(searchParams.value, dateRange.value)
-  //   );
-  //   console.log("用户数据表格数据->", res.data);
-  //   tableList.value = res.data.records;
-  //   total.value = res.data.total;
-  //   loading.value = false;
-  // } catch (error) {
-  //   console.log(error);
-  //   koiNoticeError("数据查询失败，请刷新重试🌻");
-  // }
+  try {
+    loading.value = true;
+    tableList.value = []; // 重置表格数据
+    const res: any = await listPage(koiDatePicker(searchParams.value, dateRange.value));
+    console.log("用户数据表格数据->", res.data);
+    tableList.value = res.data.users;
+    total.value = res.data.totalCount;
+    loading.value = false;
+  } catch (error) {
+    console.log(error);
+    koiNoticeError("数据查询失败，请刷新重试🌻");
+    loading.value = false;
+  }
 };
 
 // 静态页面防止报错(可直接删除)
@@ -580,8 +356,9 @@ const handleTableData = async () => {
   try {
     const res: any = await listPage(koiDatePicker(searchParams.value, dateRange.value));
     // console.log("用户数据表格数据->", res.data);
-    tableList.value = res.data.records;
-    total.value = res.data.total;
+    tableList.value = res.data.users;
+    console.log("用户头像表格数据->", tableList.value[5].avatar);
+    total.value = res.data.totalCount;
   } catch (error) {
     console.log(error);
     koiNoticeError("数据查询失败，请刷新重试🌻");
@@ -651,7 +428,7 @@ const multiple = ref<boolean>(true); // 非多个禁用
 /** 是否多选 */
 const handleSelectionChange = (selection: any) => {
   // console.log(selection);
-  ids.value = selection.map((item: any) => item.userId);
+  ids.value = selection.map((item: any) => item.id);
   single.value = selection.length != 1; // 单选
   multiple.value = !selection.length; // 多选
 };
@@ -665,7 +442,7 @@ const handleAdd = () => {
   resetForm();
   // 标题
   title.value = "用户添加";
-  form.value.userStatus = "0";
+  form.value.isFrozen = false;
 };
 
 /** 回显数据 */
@@ -694,7 +471,7 @@ const handleUpdate = async (row?: any) => {
   resetForm();
   // 标题
   title.value = "用户修改";
-  const userId = row ? row.userId : ids.value[0];
+  const userId = row ? row.id : ids.value[0];
   if (userId == null || userId == "") {
     koiMsgError("请选择需要修改的数据🌻");
   }
@@ -712,12 +489,12 @@ const formRef = ref<any>();
 
 // form表单
 let form = ref<any>({
-  userTitle: "",
-  userType: "",
-  userStatus: "",
+  username: "",
+  nickName: "",
+  email: "",
+  isFrozen: false,
   avatar: "",
-  phone: "",
-  remark: ""
+  phoneNumber: ""
 });
 
 /** 清空表单数据 */
@@ -728,22 +505,26 @@ const resetForm = () => {
       // 重置该表单项，将其值重置为初始值，并移除校验结果
       formRef.value.resetFields();
     }
-  });     
+  });
   form.value = {
-    userTitle: "",
-    userType: "",
-    userStatus: "",
+    username: "",
+    nickName: "",
+    email: "",
+    isFrozen: false,
     avatar: "",
-    phone: "",
-    remark: ""
+    phoneNumber: ""
   };
 };
 
 /** 表单规则 */
 const rules = reactive({
-  userTitle: [{ required: true, message: "请输入用户名字", trigger: "blur" }],
-  userType: [{ required: true, message: "请输入用户类型", trigger: "blur" }],
-  userStatus: [{ required: true, message: "请输入选择用户状态", trigger: "blur" }]
+  username: [{ required: true, message: "请输入用户名", trigger: "blur" }],
+  nickName: [{ required: true, message: "请输入昵称", trigger: "blur" }],
+  email: [
+    { required: true, message: "请输入邮箱", trigger: "blur" },
+    { type: "email", message: "请输入正确的邮箱地址", trigger: ["blur", "change"] }
+  ],
+  phoneNumber: [{ pattern: /^1[3-9]\d{9}$/, message: "请输入正确的手机号码", trigger: "blur" }]
 });
 
 // 确定按钮是否显示Loading
@@ -755,8 +536,8 @@ const handleConfirm = () => {
   confirmLoading.value = true;
   (formRef.value as any).validate(async (valid: any) => {
     if (valid) {
-      console.log("表单ID", form.value.userId);
-      if (form.value.userId != null && form.value.userId != "") {
+      console.log("表单ID", form.value.id);
+      if (form.value.id != null && form.value.id != "") {
         try {
           await update(form.value);
           koiNoticeSuccess("修改成功🌻");
@@ -808,15 +589,15 @@ const handleCancel = () => {
 
 /** 状态开关 */
 const handleSwitch = (row: any) => {
-  let text = row.userStatus === "0" ? "启用" : "停用";
-  koiMsgBox("确认要[" + text + "]-[" + row.userName + "]吗？")
+  let text = row.isFrozen ? "冻结" : "启用";
+  koiMsgBox("确认要[" + text + "]-[" + row.nickName + "]吗？")
     .then(async () => {
-      if (!row.userId || !row.userStatus) {
+      if (!row.id) {
         koiMsgWarning("请选择需要修改的数据🌻");
         return;
       }
       try {
-        await updateStatus(row.userId, row.userStatus);
+        await updateStatus(row.id, row.isFrozen ? "1" : "0");
         koiNoticeSuccess("修改成功🌻");
       } catch (error) {
         console.log(error);
@@ -889,12 +670,12 @@ const handleTransferChange = async (value: any) => {
 
 /** 删除 */
 const handleDelete = (row: any) => {
-  const id = row.userId;
+  const id = row.id;
   if (id == null || id == "") {
     koiMsgWarning("请选择需要删除的数据🌻");
     return;
   }
-  koiMsgBox("您确认需要删除用户名称[" + row.userTitle + "]么？")
+  koiMsgBox("您确认需要删除用户名称[" + row.nickName + "]么？")
     .then(async () => {
       try {
         await deleteById(id);
