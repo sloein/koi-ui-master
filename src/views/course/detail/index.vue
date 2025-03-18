@@ -174,7 +174,7 @@ import { Document, Upload } from '@element-plus/icons-vue';
 import { getById } from "@/api/system/course/index.ts";
 import { koiNoticeError, koiNoticeSuccess } from "@/utils/koi.ts";
 import { dayjs } from 'element-plus';
-import { getPresignedUrl } from '@/api/system/file';
+import { getPresignedUrl, uploadMaterial } from '@/api/system/file';
 import axios from 'axios';
 
 
@@ -277,7 +277,7 @@ const handleUploadMaterial = async () => {
 };
 
 // 处理文件上传
-const handleFileUpload = async (file: File) => {
+const handleFileUpload = async (file: any) => {
   try {
     // 1. 获取预签名URL
     const res: any = await getPresignedUrl(file.name);
@@ -286,27 +286,35 @@ const handleFileUpload = async (file: File) => {
       koiNoticeError("获取上传链接失败");
       return false;
     }
-
+    console.log("file",file);
     // 2. 使用预签名URL上传文件
-    // 直接将文件作为请求体发送
-    const uploadRes = await axios.put(res.data.data.url, file, {
+    const uploadResponse = await fetch(res.data.data.url, {
+      method: 'PUT',
+      body: file.raw,
       headers: {
-        'Content-Type': file.type
-      }
+        'Content-Type': file.raw.type,
+      },
     });
 
-    if (uploadRes.status !== 200) {
-      throw new Error('上传失败');
+    if (!uploadResponse.ok) {
+      koiNoticeError("文件上传失败");
+      return false;
     }
 
     // 3. 上传成功后，将文件信息添加到课程资料列表
-    const fileInfo = {
-      name: file.name,
-      url: res.data.fileUrl,
-      type: file.type
+    const material = {
+      title: file.name,
+      url: res.data.data.url,
+      fileSize: file.raw.size,
+      type: file.raw.type,
+      courseId: courseData.value.id
     };
-    
-    courseData.value.materials = [...(courseData.value.materials || []), fileInfo];
+    const uploadRes: any = await uploadMaterial(material);
+    if (uploadRes.code !== 200) {
+      koiNoticeError("文件上传失败");
+      return false;
+    }
+    courseData.value.materials.push(material);
     koiNoticeSuccess("文件上传成功🌻");
     return true;
   } catch (error) {
