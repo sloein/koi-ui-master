@@ -39,24 +39,22 @@
 
       <!-- 表格头部按钮 -->
       <el-row :gutter="10">
-        <el-col :span="1.5" v-auth="['system:role:add']">
-          <el-button type="primary" icon="plus" plain @click="handleAdd()">新增</el-button>
-        </el-col>
-        <el-col :span="1.5" v-auth="['system:role:update']">
+
+        <!-- <el-col :span="1.5" >
           <el-button type="success" icon="edit" plain @click="handleUpdate()" :disabled="single">修改</el-button>
+        </el-col> -->
+        <el-col :span="1.5" >
+          <el-button type="danger" icon="delete" plain @click="handleBatchDelete()" :disabled="multiple">批量删除</el-button>
         </el-col>
-        <el-col :span="1.5" v-auth="['system:role:delete']">
-          <el-button type="danger" icon="delete" plain @click="handleBatchDelete()" :disabled="multiple">删除</el-button>
-        </el-col>
-        <el-col :span="1.5" v-auth="['system:role:update']">
+        <!-- <el-col :span="1.5" >
           <el-button type="primary" icon="edit" plain @click="handleAssignRoles()" :disabled="single">分配角色</el-button>
-        </el-col>
-        <el-col :span="1.5" v-auth="['system:role:export']">
+        </el-col> -->
+        <!-- <el-col :span="1.5" >
           <el-button type="warning" icon="download" plain>导出</el-button>
         </el-col>
-        <el-col :span="1.5" v-auth="['system:role:import']">
+        <el-col :span="1.5" >
           <el-button type="info" icon="upload" plain>导入</el-button>
-        </el-col>
+        </el-col> -->
         <KoiToolbar v-model:showSearch="showSearch" @refreshTable="handleListPage"></KoiToolbar>
       </el-row>
 
@@ -132,7 +130,7 @@
           align="center"
           width="150"
           fixed="right"
-          v-auth="['system:role:update', 'system:role:delete']"
+      
         >
           <template #default="{ row }">
             <el-tooltip content="修改🌻" placement="top">
@@ -142,7 +140,7 @@
                 circle
                 plain
                 @click="handleUpdate(row)"
-                v-auth="['system:role:update']"
+               
               ></el-button>
             </el-tooltip>
             <el-tooltip content="删除🌻" placement="top">
@@ -152,7 +150,7 @@
                 circle
                 plain
                 @click="handleDelete(row)"
-                v-auth="['system:role:delete']"
+              
               ></el-button>
             </el-tooltip>
           </template>
@@ -269,7 +267,7 @@ import {
   koiMsgInfo
 } from "@/utils/koi.ts";
 // @ts-ignore
-import { listPage, getById, add, update, deleteById, batchDelete, updateStatus } from "@/api/system/user/index.ts";
+import { listPage, getById, update, deleteById, batchDelete, updateStatus } from "@/api/system/user/index.ts";
 import { listNormalRole, assignUserRole } from "@/api/system/role/index.ts";
 // @ts-ignore
 import { listDataByType } from "@/api/system/dict/data/index.ts";
@@ -357,7 +355,7 @@ const handleTableData = async () => {
     const res: any = await listPage(koiDatePicker(searchParams.value, dateRange.value));
     // console.log("用户数据表格数据->", res.data);
     tableList.value = res.data.users;
-    console.log("用户头像表格数据->", tableList.value[5].avatar);
+  
     total.value = res.data.totalCount;
   } catch (error) {
     console.log(error);
@@ -434,16 +432,16 @@ const handleSelectionChange = (selection: any) => {
 };
 
 /** 添加 */
-const handleAdd = () => {
-  // 打开对话框
-  koiDrawerRef.value.koiOpen();
-  koiMsgSuccess("添加🌻");
-  // 重置表单
-  resetForm();
-  // 标题
-  title.value = "用户添加";
-  form.value.isFrozen = false;
-};
+// const handleAdd = () => {
+//   // 打开对话框
+//   koiDrawerRef.value.koiOpen();
+//   koiMsgSuccess("添加🌻");
+//   // 重置表单
+//   resetForm();
+//   // 标题
+//   title.value = "用户添加";
+//   form.value.isFrozen = false;
+// };
 
 /** 回显数据 */
 const handleEcho = async (id: any) => {
@@ -537,7 +535,7 @@ const handleConfirm = () => {
   (formRef.value as any).validate(async (valid: any) => {
     if (valid) {
       console.log("表单ID", form.value.id);
-      if (form.value.id != null && form.value.id != "") {
+ 
         try {
           await update(form.value);
           koiNoticeSuccess("修改成功🌻");
@@ -550,20 +548,7 @@ const handleConfirm = () => {
           confirmLoading.value = false;
           koiNoticeError("修改失败，请刷新重试🌻");
         }
-      } else {
-        try {
-          await add(form.value);
-          koiNoticeSuccess("添加成功🌻");
-          confirmLoading.value = false;
-          koiDrawerRef.value.koiQuickClose();
-          resetForm();
-          handleListPage();
-        } catch (error) {
-          console.log(error);
-          confirmLoading.value = false;
-          koiNoticeError("添加失败，请刷新重试🌻");
-        }
-      }
+    
 
       // let loadingTime = 1;
       // setInterval(() => {

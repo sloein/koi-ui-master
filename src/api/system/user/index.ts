@@ -11,10 +11,10 @@ enum API {
   KOI_USERINFO = "/user/info",
   REGISTER_CAPTCHA = "/email/register-captcha",
   LIST_PAGE = "/user/list",
-  GET_BY_ID = "/koi/sysLoginUser/getById",
-  UPDATE = "/koi/sysLoginUser/update",
+  GET_BY_ID = "/user/getById",
+  UPDATE = "/user/update",
   ADD = "/koi/sysLoginUser/add",
-  DELETE = "/koi/sysLoginUser/deleteById",
+  DELETE = "/user/delete",
   BATCH_DELETE = "/koi/sysLoginUser/batchDelete",
   UPDATE_STATUS = "/koi/sysLoginUser/updateStatus"
 }
@@ -74,7 +74,7 @@ export const add = (data: any) => {
 
 // 删除
 export const deleteById = (id: any) => {
-  return koi.post(API.DELETE + "/" + id);
+  return koi.get(API.DELETE + "/" + id);
 };
 
 // 批量删除

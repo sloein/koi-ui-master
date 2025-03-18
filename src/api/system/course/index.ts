@@ -5,10 +5,15 @@ export function listPage(params: any) {
   return koi.get("/course", params);
 }
 
-// 获取课程详情
+export function listMyPage(params: any) {
+  return koi.get("/course/my", params);
+}
+
+// 获取课程
 export function getById(id: number) {
   return koi.get("/course/detail", { id });
 }
+
 
 // 创建课程
 export function add(data: any) {

@@ -116,24 +116,26 @@ const handleHttpUpload = async (options: UploadRequestOptions) => {
     text: "正在上传",
     background: "rgba(0,0,0,.2)"
   });
+  
   try {
     const res: any = await koi.upload("/user/upload", formData);
     
     // 后端直接返回文件路径字符串，不是对象
     const imagePath = typeof res === 'string' ? res : res.data;
     
-    console.log(import.meta.env.VITE_SERVER + '/'+imagePath);
     // 更新图片URL，服务器基础路径 + 图片路径
     emit("update:imageUrl", import.meta.env.VITE_SERVER + '/' + imagePath);
-    await updateUserInfo({
-      avatar: import.meta.env.VITE_SERVER + '/' +imagePath
-    });
-    loadingInstance.close();
+    
     // 调用 el-form 内部的校验方法[可自动校验]
     formItemContext?.prop && formContext?.validateField([formItemContext.prop as string]);
+    
+    // uploadSuccess();
+    
   } catch (error) {
-    loadingInstance.close();
+    // uploadError();
     options.onError(error as any);
+  } finally {
+    loadingInstance.close(); // 确保在任何情况下都关闭loading
   }
 };
 
