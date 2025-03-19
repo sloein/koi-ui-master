@@ -17,8 +17,7 @@ const authStore = defineStore("auth", {
       recursiveMenuList: [],
       // 面包屑数据
       breadcrumbList: [],
-      // 用户角色
-      roleList: [],
+ 
       // 按钮权限列表
       buttonList: [],
       // 用户信息
@@ -26,7 +25,8 @@ const authStore = defineStore("auth", {
         userId: "",
         username: "",
         sex: "",
-        avatar: ""
+        avatar: "",
+        roles: []
       }
     };
   },

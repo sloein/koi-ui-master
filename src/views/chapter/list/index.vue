@@ -83,16 +83,24 @@
             </el-tag>
           </template>
         </el-table-column>
-         <el-table-column label="操作" align="center" width="120" fixed="right">
+         <el-table-column label="操作" align="center" width="180" fixed="right">
           <template #default="{ row }">
-            <el-tooltip content="修改🌻" placement="top">
+            <el-tooltip content="查看详情🌻" placement="top">
               <el-button
                 type="primary"
+                icon="View"
+                circle
+                plain
+                @click="handleDetail(row)"
+              ></el-button>
+            </el-tooltip>
+            <el-tooltip content="修改🌻" placement="top">
+              <el-button
+                type="warning"
                 icon="Edit"
                 circle
                 plain
                 @click="handleUpdate(row)"
-          
               ></el-button>
             </el-tooltip>
             <el-tooltip content="删除🌻" placement="top">
@@ -102,7 +110,6 @@
                 circle
                 plain
                 @click="handleDelete(row)"
-      
               ></el-button>
             </el-tooltip>
           </template>
@@ -207,12 +214,13 @@
   </div>
 </template>
 
-<script setup lang="ts" name="coursePage">
+<script setup lang="ts" name="chapterListPage">
 import { nextTick, ref, reactive, onMounted } from "vue";
 import { Plus } from '@element-plus/icons-vue'
 import { koiNoticeSuccess, koiNoticeError, koiMsgError, koiMsgWarning, koiMsgBox, koiMsgInfo } from "@/utils/koi.ts";
-import { listMyPage, getById, add, update, deleteById, batchDelete } from "@/api/system/course/index.ts";
+import { listPage, getById, add, update, deleteById, batchDelete } from "@/api/system/course/index.ts";
 import KoiUploadImage from "@/components/KoiUpload/Image.vue";
+import { useRouter } from "vue-router";
 
 // 表格加载动画Loading
 const loading = ref(false);
@@ -262,7 +270,7 @@ const handleListPage = async () => {
   loading.value = true;
   try {
     tableList.value = [];
-    const res: any = await listMyPage(searchParams.value);
+    const res: any = await listPage(searchParams.value);
     // 确保res.data存在，如果不存在则使用默认值
     if (res.data) {
       tableList.value = res.data.courses || [];
@@ -284,7 +292,7 @@ const handleListPage = async () => {
 /** 数据表格[删除、批量删除等刷新使用] */
 const handleTableData = async () => {
   try {
-    const res: any = await listMyPage(searchParams.value);
+    const res: any = await listPage(searchParams.value);
     tableList.value = res.data.courses;
     total.value = res.data.totalCount;
   } catch (error) {
@@ -456,6 +464,13 @@ const handleDelete = (row: any) => {
     .catch(() => {
       koiMsgError("已取消🌻");
     });
+};
+
+const router = useRouter();
+
+/** 查看详情 */
+const handleDetail = async (row: any) => {
+  router.push(`/course/detail/${row.id}`);
 };
 
 /** 批量删除 */

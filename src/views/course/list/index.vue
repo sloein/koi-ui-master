@@ -25,10 +25,12 @@
         <el-form-item>
           <el-button type="primary" icon="search" plain v-throttle="handleSearch">搜索</el-button>
           <el-button type="danger" icon="refresh" plain v-debounce="resetSearch">重置</el-button>
+          <el-button type="primary" icon="plus" plain @click="handleAdd()">新增</el-button>
+     
         </el-form-item>
       </el-form>
       <!-- 表格头部按钮 -->
-      <el-row :gutter="10">
+      <!-- <el-row :gutter="10">
         <el-col :span="1.5" >
           <el-button type="primary" icon="plus" plain @click="handleAdd()">新增</el-button>
         </el-col>
@@ -38,7 +40,7 @@
         </el-col>
     
         <KoiToolbar v-model:showSearch="showSearch" @refreshTable="handleListPage"></KoiToolbar>
-      </el-row>
+      </el-row> -->
 
       <div class="h-20px"></div>
       <!-- 数据表格 -->
@@ -100,6 +102,7 @@
                 icon="Edit"
                 circle
                 plain
+                :disabled="!isCourseTeacher(row.teachers)&&!isAdmin"
                 @click="handleUpdate(row)"
               ></el-button>
             </el-tooltip>
@@ -109,6 +112,7 @@
                 icon="Delete"
                 circle
                 plain
+                :disabled="!isCourseTeacher(row.teachers)&&!isAdmin"
                 @click="handleDelete(row)"
               ></el-button>
             </el-tooltip>
@@ -215,24 +219,26 @@
 </template>
 
 <script setup lang="ts" name="coursePage">
-import { nextTick, ref, reactive, onMounted } from "vue";
+import { nextTick, ref, reactive, onMounted, computed } from "vue";
 import { Plus } from '@element-plus/icons-vue'
 import { koiNoticeSuccess, koiNoticeError, koiMsgError, koiMsgWarning, koiMsgBox, koiMsgInfo } from "@/utils/koi.ts";
 import { listPage, getById, add, update, deleteById, batchDelete } from "@/api/system/course/index.ts";
 import KoiUploadImage from "@/components/KoiUpload/Image.vue";
 import { useRouter } from "vue-router";
-
+import useUserStore from "@/stores/modules/user";
 // 表格加载动画Loading
 const loading = ref(false);
 // 是否显示搜索表单[默认显示]
 const showSearch = ref<boolean>(true);
 // 表格数据
 const tableList = ref<any>([]);
+const userStore = useUserStore();
 
 // 查询参数
 const searchParams = ref({
   pageNo: 1,
   pageSize: 10,
+  userId: "",
   title: "",
   description: "",
   startTime: "",
@@ -246,6 +252,7 @@ const resetSearchParams = () => {
   searchParams.value = {
     pageNo: 1,
     pageSize: 10,
+    userId: "",
     title: "",
     description: "",
     startTime: "",
@@ -279,6 +286,7 @@ const handleListPage = async () => {
       tableList.value = [];
       total.value = 0;
     }
+    console.log("tableList", tableList.value);
   } catch (error) {
     console.log(error);
     koiNoticeError("数据查询失败，请刷新重试🌻");
@@ -303,6 +311,12 @@ const handleTableData = async () => {
 
 onMounted(() => {
   handleListPage();
+  console.log("userStore.loginUser", userStore.loginUser);
+});
+
+
+const isAdmin = computed(() => {
+  return userStore.loginUser.isAdmin;
 });
 
 const ids = ref([]);
@@ -367,7 +381,7 @@ let form = ref<any>({
   description: "",
   coverImage: "",
   status: "",
- 
+  
 });
 
 /** 清空表单数据 */
@@ -514,6 +528,12 @@ const getStatusText = (status: string) => {
     'finished': '已结束'
   };
   return statusMap[status] || '未知状态';
+};
+
+/** 判断当前用户是否为课程教师 */
+const isCourseTeacher = (teachers: any[]) => {
+  if (!teachers || teachers.length === 0) return false;
+  return teachers.some(teacher => teacher.id === userStore.loginUser.id);
 };
 </script>
 

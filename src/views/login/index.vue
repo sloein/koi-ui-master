@@ -260,7 +260,7 @@ const handleKoiLogin = () => {
         // 1、执行登录接口
         const res: any = await koiLogin({ username, password });
         userStore.setToken(res.data.token);
-        // userStore.setLoginUser(res.data.userInfo);
+        userStore.setLoginUser(res.data.userInfo);
         console.log("用户信息2", userStore.loginUser);
         // 2、添加动态路由 AND 用户按钮 AND 角色信息 AND 用户个人信息
         if (userStore?.token) {

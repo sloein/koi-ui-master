@@ -1,0 +1,13 @@
+// 表格开启排序后--拖拽样式
+// 拖拽
+.drop-dragClass {
+    background: rgba($color: #1e90ff, $alpha: 0.5) !important;
+  }
+  // 停靠
+  .drop-ghostClass {
+    background: rgba($color: #6cacf5, $alpha: 0.5) !important;
+  }
+  // 选择
+  .drop-chosenClass:hover > td {
+    background: rgba($color: #1e90ff, $alpha: 0.5) !important;
+  }

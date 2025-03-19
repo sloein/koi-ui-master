@@ -20,10 +20,14 @@ const userStore = defineStore("user", {
     return {
       token: "",
       loginUser: {
-        userId: "",
+        id: "",
+        isAdmin: false,
+        isFrozen: false,
         username: "",
         nickName: "",
-        avatar: ""
+        avatar: "",
+        permissions: [],
+        roles: []
       }
     };
   },

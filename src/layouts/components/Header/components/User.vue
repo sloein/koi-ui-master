@@ -41,8 +41,10 @@ const loginUser = computed(() => userStore.loginUser);
 console.log("用户信息", userStore.loginUser);
 // 获取角色名称
 const roleName = computed(() => {
-  if (authStore.roleList && authStore.roleList.length > 0) {
-    return authStore.roleList[0].roleName || '管理员';
+  if (authStore.roles && authStore.roles.length > 0) {
+    
+    return authStore.roles.map((item: any) => item.roleName).join(',');
+
   }
   return '管理员';
 });
