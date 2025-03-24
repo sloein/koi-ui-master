@@ -170,7 +170,8 @@ const initUserInfo = () => {
 
 // 处理头像更新
 const handleAvatarUpdate = (newAvatar: string) => {
-  if (newAvatar && newAvatar !== mine.value.avatar) {
+  if (newAvatar ) {
+    console.log("newAvatar", newAvatar);
     // 更新头像
     updateUserInfo({ avatar: newAvatar })
       .then(res => {

@@ -14,12 +14,6 @@
           </div>
           <div class="chroma-text text-lg text-center <md:hidden">{{ $t("login.description") }}</div>
         </div>
-        <!-- 备案号-->
-        <div class="beianhao select-none <md:hidden">
-          <a class="chroma-text" href="https://beian.miit.gov.cn/" target="_blank"
-            >{{ $t("login.beianhao") }}：豫ICP备2022022094号-1</a
-          >
-        </div>
       </el-col>
       <el-col :lg="8" :md="12" :sm="9" :xs="24" class="dark:bg-#161616 bg-gray-100 flex flex-items-center flex-justify-center flex-col">
         <div class="flex flex-items-center">
@@ -475,14 +469,7 @@ const handleRegister = () => {
 </script>
 
 <style lang="scss" scoped>
-/** 备案号 */
-.beianhao {
-  position: absolute;
-  bottom: 10px;
-  left: auto;
-  font-size: 12px;
-  font-weight: bold;
-}
+
 
 .login-background {
   background: linear-gradient(155deg, #07070915 12%, var(--el-color-primary) 36%, #07070915 76%);

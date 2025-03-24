@@ -57,6 +57,7 @@ import koi from "@/utils/axios.ts";
 import { ElNotification, formContextKey, formItemContextKey } from "element-plus";
 import type { UploadProps, UploadRequestOptions } from "element-plus";
 import { updateUserInfo } from "@/api/system/user";
+import { getPresignedUrl } from '@/api/system/file';
 
 interface IUploadImageProps {
   imageUrl: string; // 图片地址 ==> 必传
@@ -109,22 +110,47 @@ const imageDisabled = computed(() => {
 const emit = defineEmits<{
   "update:imageUrl": [value: string];
 }>();
+
 const handleHttpUpload = async (options: UploadRequestOptions) => {
-  let formData = new FormData();
-  formData.append("file", options.file);
   const loadingInstance = ElLoading.service({
     text: "正在上传",
     background: "rgba(0,0,0,.2)"
   });
   
   try {
-    const res: any = await koi.upload("/user/upload", formData);
+    // 1. 获取预签名URL
+    const res: any = await getPresignedUrl(options.file.name);
+    if (res.code !== 200) {
+      ElNotification({
+        title: "温馨提示",
+        message: "获取上传链接失败",
+        type: "error"
+      });
+      return false;
+    }
+
+    // 2. 使用预签名URL上传文件
+    const uploadResponse = await fetch(res.data.data.url, {
+      method: 'PUT',
+      body: options.file,
+      headers: {
+        'Content-Type': options.file.type,
+      },
+    });
+
+    if (!uploadResponse.ok) {
+      ElNotification({
+        title: "温馨提示",
+        message: "图片上传失败",
+        type: "error"
+      });
+      return false;
+    }
+ 
+    // 3. 更新图片URL，服务器基础路径 + 图片路径  
+    const imageUrl = decodeURIComponent(uploadResponse.url.split('?')[0]);
     
-    // 后端直接返回文件路径字符串，不是对象
-    const imagePath = typeof res === 'string' ? res : res.data;
-    
-    // 更新图片URL，服务器基础路径 + 图片路径
-    emit("update:imageUrl", import.meta.env.VITE_SERVER + '/' + imagePath);
+    emit("update:imageUrl",  imageUrl);
     
     // 调用 el-form 内部的校验方法[可自动校验]
     formItemContext?.prop && formContext?.validateField([formItemContext.prop as string]);

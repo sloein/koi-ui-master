@@ -86,10 +86,7 @@
       </div>
     </div>
 
-    <!-- 备案号-->
-    <div class="beianhao" v-if="!isMobile">
-      <a href="https://beian.miit.gov.cn/" target="_blank">网站备案号：豫ICP备2022022094号-1</a>
-    </div>
+  
 
     <!-- 移动端登录盒子 -->
     <div class="login-form" v-if="isMobile">
@@ -431,14 +428,7 @@ const koiSwitchRegister = () => {
 </script>
 
 <style lang="scss" scoped>
-/** 备案号 */
-.beianhao {
-  position: absolute;
-  bottom: 10px;
-  left: 45%;
-  font-size: 12px;
-  font-weight: bold;
-}
+
 
 /** 最外层大盒子 */
 .bigBox {

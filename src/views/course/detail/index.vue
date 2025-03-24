@@ -10,10 +10,20 @@
       <div class="card-content">
         <div class="flex">
           <!-- 左侧封面图 -->
-          <div class="cover-image mr-6">
-            <el-image :src="courseData.coverImage" fit="cover"
-              style="width: 200px; height: 200px; border-radius: 8px;" />
-          </div>
+          <KoiUploadImage 
+            v-model:imageUrl="courseData.coverImage" 
+            @update:imageUrl="handleCoverImageUpdate"
+            width="200px"
+            height="200px"
+            class="mr-6"
+          >
+            <template #content>
+              <div class="flex flex-col items-center justify-center h-full">
+                <el-icon class="text-3xl"><Avatar /></el-icon>
+                <span class="mt-4 text-base">点击上传封面图</span>
+              </div>
+            </template>
+          </KoiUploadImage>
           <!-- 右侧信息 -->
           <div class="flex-1">
             <div class="mb-4">
@@ -197,11 +207,6 @@
         <div class="el-upload__text">
           拖拽文件到此处或 <em>点击上传</em>
         </div>
-        <template #tip>
-          <div class="el-upload__tip">
-            支持任意类型文件，单个文件不超过10MB
-          </div>
-        </template>
       </el-upload>
     </el-dialog>
   </div>
@@ -211,9 +216,9 @@
 import { enableRowDrop } from '@/utils/sortable'
 import { ref, onMounted, computed, watch, nextTick } from 'vue';
 import { useRoute } from 'vue-router';
-import { Document, Upload, Plus } from '@element-plus/icons-vue';
-import { addChapterContent, getById, updateChapterOrder, updateChapterTitle } from "@/api/system/course/index.ts";
-import { koiNoticeError, koiNoticeSuccess } from "@/utils/koi.ts";
+import { Document, Plus } from '@element-plus/icons-vue';
+import { addChapterContent, getById, updateChapterOrder, updateChapterTitle, update } from "@/api/system/course/index.ts";
+import { koiMsgSuccess, koiNoticeError, koiNoticeSuccess } from "@/utils/koi.ts";
 import { dayjs } from 'element-plus';
 import { getPresignedDownloadUrl, getPresignedUrl, uploadMaterial, deleteMaterial } from '@/api/system/file';
 import axios from 'axios';
@@ -532,6 +537,28 @@ const handleFileUpload = async (file: any) => {
     console.error('上传错误:', error);
     koiNoticeError("文件上传失败，请重试🌻");
     return false;
+  }
+};
+
+// 处理封面更新
+const handleCoverImageUpdate = (newCoverImage: string) => {
+  if (newCoverImage ) {
+    console.log("newCoverImage", newCoverImage);
+    // 更新封面
+    update({ id: courseData.value.id, coverImage: newCoverImage })
+      .then(res => {
+        if (res.code === 201 || res.code === 200) {
+          koiMsgSuccess("封面更新成功");
+          // 更新本地用户信息
+          courseData.value.coverImage = newCoverImage;
+        } else {
+          koiMsgError(res.message || "封面更新失败");
+        }
+      })
+      .catch(err => {
+        console.error("封面更新出错:", err);
+        koiMsgError("封面更新失败");
+      });
   }
 };
 
