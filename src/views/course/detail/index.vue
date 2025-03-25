@@ -220,11 +220,13 @@ import { Document, Plus } from '@element-plus/icons-vue';
 import { addChapterContent, getById, updateChapterOrder, updateChapterTitle, update } from "@/api/system/course/index.ts";
 import { koiMsgSuccess, koiNoticeError, koiNoticeSuccess } from "@/utils/koi.ts";
 import { dayjs } from 'element-plus';
-import { getPresignedDownloadUrl, getPresignedUrl, uploadMaterial, deleteMaterial } from '@/api/system/file';
+import { getPresignedDownloadUrl, getPresignedUrl, uploadMaterial, deleteMaterial, checkFile, initUpload, uploadPart, completeUpload } from '@/api/system/file';
 import axios from 'axios';
 import useUserStore from "@/stores/modules/user";
 import { koiMsgBox, koiMsgError } from "@/utils/koi.ts";
 import KoiCard from "@/components/KoiCard/Index.vue";
+import SparkMD5 from 'spark-md5';
+import { objectOmit } from '@vueuse/core';
 
 const route = useRoute();
 const activeChapters = ref([]);
@@ -258,6 +260,41 @@ const chapterTableId = 'chapterTable'; // 表格id
 // 自定义指令：自动聚焦
 const vFocus = {
   mounted: (el: any) => el.querySelector('input').focus()
+};
+
+// 文件上传相关常量
+const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB
+const MAX_DIRECT_UPLOAD_SIZE = 5 * 1024 * 1024; // 5MB，小于这个大小的文件直接上传
+
+// 检查文件是否需要分片上传
+const shouldUseMultipart = (file: File): boolean => {
+  return file.size > MAX_DIRECT_UPLOAD_SIZE;
+};
+
+// 获取文件类型
+const getFileType = (file: File): string => {
+  const typeMap: { [key: string]: string } = {
+    'video/mp4': 'video',
+    'application/pdf': 'pdf',
+    'application/vnd.ms-powerpoint': 'ppt',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'pptx',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx'
+  };
+  return typeMap[file.type] || 'unknown';
+};
+
+// 检查文件类型是否允许上传
+const isAllowedFileType = (file: File, uploadType: string): boolean => {
+  if (uploadType === 'content') {
+    // 章节内容只允许视频和文档
+    return file.type === 'video/mp4' || 
+           file.type === 'application/pdf' || 
+           file.type === 'application/vnd.ms-powerpoint' || 
+           file.type === 'application/vnd.openxmlformats-officedocument.presentationml.presentation' || 
+           file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+  }
+  // 课程资料允许所有类型
+  return true;
 };
 
 // 处理标题更新
@@ -437,22 +474,221 @@ const handleAddContent = (chapter: any) => {
   dialogVisible.value = true;
 };
 
+// 计算文件 MD5
+const calculateMD5 = async (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const chunkSize = 2 * 1024 * 1024; // 2MB 分片
+    const chunks = Math.ceil(file.size / chunkSize);
+    let currentChunk = 0;
+    const spark = new SparkMD5.ArrayBuffer();
+    const reader = new FileReader();
+
+    reader.onload = (e) => {
+      const buffer = e.target?.result as ArrayBuffer;
+      spark.append(buffer);
+      currentChunk++;
+
+      if (currentChunk < chunks) {
+        // 继续读取下一个分片
+        loadNext();
+      } else {
+        // 所有分片读取完成，计算最终的 MD5
+        resolve(spark.end());
+      }
+    };
+
+    reader.onerror = reject;
+
+    const loadNext = () => {
+      const start = currentChunk * chunkSize;
+      const end = Math.min(start + chunkSize, file.size);
+      reader.readAsArrayBuffer(file.slice(start, end));
+    };
+
+    // 开始读取第一个分片
+    loadNext();
+  });
+};
+
 // 处理文件上传
 const handleFileUpload = async (file: any) => {
   try {
-    // 1. 获取预签名URL
+    // 检查文件类型是否允许上传
+    if (!isAllowedFileType(file.raw, uploadType.value)) {
+      koiNoticeError(uploadType.value === 'content' ? "只允许上传视频、文档以及ppt类型" : "文件类型不支持");
+      return false;
+    }
+
+    // 如果是上传章节内容，检查是否选择了章节
+    if (uploadType.value === 'content' && !currentChapter.value?.id) {
+      koiNoticeError("请先选择要添加内容的章节🌻");
+      return false;
+    }
+
+    console.log("检查通过");
+    // 计算文件哈希
+    const fileHash = await calculateMD5(file.raw);
+    if(fileHash === ""){
+      koiNoticeError("文件为空");
+      return false;
+    }
+   
+    // 检查文件是否已存在
+    const checkResult: any = await checkFile({ fileHash, fileName: file.name });
+    if (checkResult.code === 201 && checkResult.data.exists) {
+      // 文件已存在,直接使用已有文件
+      koiNoticeSuccess("文件已存在🌻");
+      return true;
+    }
+
+    console.log(currentChapter.value);
+   
+
+    // 判断是否需要分片上传(大于5MB)
+    const needMultipart = shouldUseMultipart(file.raw);
+    
+    if (needMultipart) {
+      // 大文件分片上传流程
+      const initResult: any = await initUpload({
+        chapterId: currentChapter.value?.id,
+        fileHash,
+        fileName: file.name,
+        fileSize: file.raw.size,
+        type: getFileType(file.raw),
+        contentUrl: checkResult.data.url || ''
+      });
+
+      if (initResult.code !== 201) {
+        koiNoticeError("初始化上传失败: " + (initResult.msg || '未知错误'));
+        return false;
+      }
+
+
+
+      const { uploadID, objectName } = initResult.data;
+      const chunkSize = CHUNK_SIZE;
+      const chunks = Math.ceil(file.raw.size / chunkSize);
+      const parts = [];
+    
+
+      // 显示上传信息
+      koiNoticeSuccess(`文件将被分为 ${chunks} 个分片上传`);
+      
+      // 分片上传
+      for (let i = 0; i < chunks; i++) {
+        const start = i * chunkSize;
+        const end = Math.min(start + chunkSize, file.raw.size);
+        const chunk = file.raw.slice(start, end);
+        
+        console.log(`分片 ${i+1}/${chunks}: 开始位置=${start}, 结束位置=${end}, 大小=${chunk.size}`);
+        
+        if (!chunk || chunk.size === 0) {
+          koiNoticeError(`分片 ${i + 1} 为空，跳过上传`);
+          continue;
+        }
+        
+        try {
+          const partResult: any = await uploadPart({
+            objectName:objectName,
+            uploadId:uploadID,
+            partNumber: i + 1, // MinIO 分片编号从 1 开始
+            chunk: chunk
+          });
+
+          if (partResult.code !== 200) {
+            koiNoticeError(`分片 ${i + 1}/${chunks} 上传失败: ${partResult.msg || '未知错误'}`);
+            return false;
+          }
+          
+          // 添加已上传分片信息
+          parts.push({
+            etag: partResult.data.etag,
+            partNumber: partResult.data.part
+          });
+          
+          // 每 5 个分片或最后一个分片显示进度
+          if (i % 5 === 0 || i === chunks - 1) {
+            koiNoticeSuccess(`已上传 ${i+1}/${chunks} 个分片`);
+          }
+        } catch (err) {
+          console.error(`上传分片 ${i+1} 时发生错误:`, err);
+          koiNoticeError(`分片 ${i + 1}/${chunks} 上传异常，请重试`);
+          return false;
+        }
+      }
+
+      // 完成分片上传
+      try {
+        const completeResult: any = await completeUpload({
+          // uploadID,
+          fileHash,
+          parts
+        });
+
+        if (completeResult.code !== 200) {
+          koiNoticeError("完成上传失败: " + (completeResult.msg || '未知错误'));
+          return false;
+        }
+
+        koiNoticeSuccess("文件上传完成，处理中...");
+
+        // 处理上传成功后的逻辑
+        if (uploadType.value === 'material') {
+          const material = {
+            id: completeResult.data.fileId,
+            title: file.name,
+            url: completeResult.data.url,
+            fileSize: file.raw.size,
+            type: getFileType(file.raw),
+            courseId: courseData.value.id
+          };
+          const uploadRes: any = await uploadMaterial(material);
+          
+          if (uploadRes.code !== 201) {
+            koiNoticeError("添加资料信息失败");
+            return false;
+          }
+          
+          material.id = uploadRes.data.id;
+          courseData.value.materials.push(material);
+          koiNoticeSuccess("资料上传成功🌻");
+        } else {
+          const content = {
+            title: file.name,
+            contentUrl: completeResult.data.url,
+            type: getFileType(file.raw),
+            chapterId: currentChapter.value.id,
+            order: (currentChapter.value.contents?.length || 0) + 1
+          };
+          const uploadRes: any = await addChapterContent(content);
+          
+          if (uploadRes.code !== 201) {
+            koiNoticeError("内容添加失败");
+            return false;
+          }
+          
+          if (!currentChapter.value.contents) {
+            currentChapter.value.contents = [];
+          }
+          currentChapter.value.contents.push({
+            ...content,
+            id: uploadRes.data.id
+          });
+          koiNoticeSuccess("内容添加成功🌻");
+        }
+        return true;
+      } catch (err) {
+        console.error("完成上传时发生错误:", err);
+        koiNoticeError("完成上传失败，请重试");
+        return false;
+      }
+    }
+
+    // 小文件走原有的预签名上传逻辑
     const res: any = await getPresignedUrl(file.name);
     if (res.code !== 200) {
       koiNoticeError("获取上传链接失败");
       return false;
-    }
-
-    if(uploadType.value === 'content'){
-      //只允许视频和文档以及ppt类型
-      if(file.raw.type !== 'video/mp4' && file.raw.type !== 'application/pdf' && file.raw.type !== 'application/vnd.ms-powerpoint' && file.raw.type !== 'application/vnd.openxmlformats-officedocument.presentationml.presentation'&& file.raw.type !== 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'){
-        koiNoticeError("只允许上传视频、文档以及ppt类型");
-        return false;
-      }
     }
 
     // 2. 使用预签名URL上传文件
