@@ -192,44 +192,138 @@
       v-model="dialogVisible" 
       :title="uploadType === 'material' ? '上传课程资料' : '添加章节内容'" 
       width="500px"
+      :close-on-click-modal="false"
+      :close-on-press-escape="!isUploading"
+      :show-close="!isUploading"
     >
-      <el-upload 
-        ref="uploadRef" 
-        class="upload-demo" 
-        drag 
-        action="#" 
-        :auto-upload="false" 
-        :show-file-list="true"
-        :on-change="handleFileChange" 
-        :limit="1"
-      >
-        <el-icon class="el-icon--upload"><upload-filled /></el-icon>
-        <div class="el-upload__text">
-          拖拽文件到此处或 <em>点击上传</em>
+      <div v-if="!isUploading">
+        <el-form>
+          <el-form-item v-if="uploadStatus.file" label="文件名称">
+            <div>{{ uploadStatus.file.name }}</div>
+          </el-form-item>
+          <el-form-item v-if="uploadStatus.file" label="文件大小">
+            <div>{{ (uploadStatus.file.size / (1024 * 1024)).toFixed(2) }} MB</div>
+          </el-form-item>
+          <el-form-item v-if="uploadStatus.file" label="文件类型">
+            <div>{{ uploadStatus.fileType || getFileType(uploadStatus.file) }}</div>
+          </el-form-item>
+          <el-form-item v-if="uploadStatus.file" label="资料标题">
+            <el-input v-model="uploadStatus.title" placeholder="请输入资料标题" />
+          </el-form-item>
+        </el-form>
+        
+        <el-upload 
+          ref="uploadRef" 
+          class="upload-demo" 
+          drag 
+          action="#" 
+          :auto-upload="false" 
+          :show-file-list="true"
+          :on-change="handleFileChange" 
+          :limit="1"
+        >
+          <el-icon class="el-icon--upload"><upload-filled /></el-icon>
+          <div class="el-upload__text">
+            拖拽文件到此处或 <em>点击上传</em>
+          </div>
+          <template #tip>
+            <div class="el-upload__tip">
+              <p>文件大小超过5MB将自动使用分片上传</p>
+              <p v-if="uploadType === 'content'">只允许上传视频和文档文件</p>
+            </div>
+          </template>
+        </el-upload>
+      </div>
+      
+      <div v-else class="upload-progress">
+        <h3 class="mb-2">{{ uploadStatus.file?.name }}</h3>
+        
+        <div class="mb-4">
+          <div class="flex justify-between mb-1">
+            <span>总进度: {{ uploadStatus.progress }}%</span>
+            <span>{{ formatSpeed(uploadStatus.speed) }}</span>
+          </div>
+          <el-progress 
+            :percentage="uploadStatus.progress" 
+            :status="uploadStatus.status === 'error' ? 'exception' : undefined" 
+          />
+          <div class="text-sm text-gray-500 mt-1" v-if="uploadStatus.remainingTime > 0">
+            预计剩余时间: {{ formatRemainingTime(uploadStatus.remainingTime) }}
+          </div>
         </div>
-      </el-upload>
+        
+        <div class="chunks-progress" v-if="uploadStatus.chunks.length > 1">
+          <h4 class="mb-2">分片进度</h4>
+          <div class="grid grid-cols-2 gap-2">
+            <div v-for="chunk in uploadStatus.chunks" :key="chunk.index" class="chunk-item">
+              <div class="flex justify-between mb-1">
+                <span>分片 {{ chunk.index + 1 }}</span>
+                <span>{{ chunk.progress }}%</span>
+              </div>
+              <el-progress 
+                :percentage="chunk.progress" 
+                :status="chunk.status === 'error' ? 'exception' : undefined" 
+                :stroke-width="10"
+              />
+            </div>
+          </div>
+        </div>
+        
+        <div v-if="uploadStatus.status === 'error'" class="error-message mt-4">
+          <el-alert
+            title="上传失败"
+            type="error"
+            :description="uploadStatus.errorMessage"
+            show-icon
+          />
+        </div>
+      </div>
+      
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="dialogVisible = false" :disabled="isUploading && !isPaused">取消</el-button>
+          <template v-if="isUploading">
+            <el-button @click="cancelUpload" type="danger">终止上传</el-button>
+            <el-button v-if="isPaused" @click="resumeUpload" type="primary">继续上传</el-button>
+            <el-button v-else @click="pauseUpload" type="warning">暂停上传</el-button>
+          </template>
+        </div>
+      </template>
     </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts" name="courseDetail">
-import { enableRowDrop } from '@/utils/sortable'
-import { ref, onMounted, computed, watch, nextTick } from 'vue';
-import { useRoute } from 'vue-router';
-import { Document, Plus } from '@element-plus/icons-vue';
-import { addChapterContent, getById, updateChapterOrder, updateChapterTitle, update } from "@/api/system/course/index.ts";
-import { koiMsgSuccess, koiNoticeError, koiNoticeSuccess } from "@/utils/koi.ts";
-import { dayjs } from 'element-plus';
-import { getPresignedDownloadUrl, getPresignedUrl, uploadMaterial, deleteMaterial, checkFile, initUpload, uploadPart, completeUpload } from '@/api/system/file';
-import axios from 'axios';
-import useUserStore from "@/stores/modules/user";
-import { koiMsgBox, koiMsgError } from "@/utils/koi.ts";
+import { getById, update, updateChapterOrder, updateChapterTitle } from "@/api/system/course/index.ts";
+import { 
+  checkFile, 
+  deleteMaterial, 
+  getPresignedDownloadUrl, 
+  initUpload,
+  initMaterialUpload,
+  getChunkPresignedUrl,
+  getUploadedParts,
+  completeMultipartUpload,
+  abortMultipartUpload
+} from '@/api/system/file';
 import KoiCard from "@/components/KoiCard/Index.vue";
+import useUserStore from "@/stores/modules/user";
+import { koiMsgBox, koiMsgError, koiMsgSuccess, koiNoticeError, koiNoticeSuccess } from "@/utils/koi.ts";
+import { enableRowDrop } from '@/utils/sortable';
+import { Document, Plus, UploadFilled } from '@element-plus/icons-vue';
+import axios from 'axios';
+import { dayjs } from 'element-plus';
 import SparkMD5 from 'spark-md5';
-import { objectOmit } from '@vueuse/core';
+import { computed, nextTick, onMounted, ref, watch } from 'vue';
+import { useRoute } from 'vue-router';
+
 
 const route = useRoute();
 const activeChapters = ref([]);
+
+// 文件上传相关常量
+const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB
+const MAX_DIRECT_UPLOAD_SIZE = 5 * 1024 * 1024; // 5MB，小于这个大小的文件直接上传
 
 // 课程数据
 const courseData = ref<any>({
@@ -248,10 +342,43 @@ const courseData = ref<any>({
 
 // 上传对话框
 const dialogVisible = ref(false);
-const uploadFiles = ref<any>([]);
+
 const uploadRef = ref();
 const uploadType = ref('material'); // 用于区分是上传资料还是章节内容
 const currentChapter = ref<any>(null); // 当前选中的章节
+
+// 文件上传状态相关数据
+const uploadStatus = ref({
+  file: null as File | null,
+  fileName: '',
+  fileHash: '',
+  uploadId: '',
+  chunkSize: CHUNK_SIZE,
+  chunks: [] as {
+    index: number,
+    start: number,
+    end: number,
+    progress: number,
+    status: 'waiting' | 'uploading' | 'success' | 'error',
+    etag: string
+  }[],
+  progress: 0,
+  status: 'waiting' as 'waiting' | 'uploading' | 'success' | 'error' | 'paused',
+  uploadedSize: 0,
+  totalSize: 0,
+  title: '',
+  fileType: '',
+  speed: 0,
+  startTime: 0,
+  currentTime: 0,
+  remainingTime: 0,
+  errorMessage: ''
+});
+
+// 上传操作控制
+const isUploading = ref(false);
+const isPaused = ref(false);
+const abortControllers = new Map<number, AbortController>();
 
 // 章节排序相关
 const isSort = ref(false); // 是否开启排序，默认关闭
@@ -261,10 +388,6 @@ const chapterTableId = 'chapterTable'; // 表格id
 const vFocus = {
   mounted: (el: any) => el.querySelector('input').focus()
 };
-
-// 文件上传相关常量
-const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB
-const MAX_DIRECT_UPLOAD_SIZE = 5 * 1024 * 1024; // 5MB，小于这个大小的文件直接上传
 
 // 检查文件是否需要分片上传
 const shouldUseMultipart = (file: File): boolean => {
@@ -511,268 +634,431 @@ const calculateMD5 = async (file: File): Promise<string> => {
 };
 
 // 处理文件上传
-const handleFileUpload = async (file: any) => {
+const handleFileUpload = async (file: File) => {
   try {
     // 检查文件类型是否允许上传
-    if (!isAllowedFileType(file.raw, uploadType.value)) {
-      koiNoticeError(uploadType.value === 'content' ? "只允许上传视频、文档以及ppt类型" : "文件类型不支持");
+    if (!isAllowedFileType(file, uploadType.value)) {
+      koiNoticeError("文件类型不允许上传，请选择正确的文件类型🌻");
       return false;
     }
+    
+    // 重置上传状态
+    resetUploadStatus(file);
+    
+    // 计算文件 MD5
+    uploadStatus.value.status = 'uploading';
+    const fileMd5 = await calculateMD5(file);
+    uploadStatus.value.fileHash = fileMd5;
+    
+    // 文件标题默认使用文件名（不包含扩展名）
+    uploadStatus.value.title = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
+    uploadStatus.value.fileType = getFileType(file);
 
-    // 如果是上传章节内容，检查是否选择了章节
-    if (uploadType.value === 'content' && !currentChapter.value?.id) {
-      koiNoticeError("请先选择要添加内容的章节🌻");
-      return false;
-    }
-
-    console.log("检查通过");
-    // 计算文件哈希
-    const fileHash = await calculateMD5(file.raw);
-    if(fileHash === ""){
-      koiNoticeError("文件为空");
-      return false;
-    }
-   
-    // 检查文件是否已存在
-    const checkResult: any = await checkFile({ fileHash, fileName: file.name });
-    if (checkResult.code === 201 && checkResult.data.exists) {
-      // 文件已存在,直接使用已有文件
-      koiNoticeSuccess("文件已存在🌻");
+    // 检查文件是否存在
+    const checkFileRes: any = await checkFile({
+      fileHash: fileMd5,
+      fileName: file.name
+    });
+    
+    if (checkFileRes.data.exists) {
+      koiNoticeSuccess("文件已存在，无需重新上传🌻");
+      // 更新课程详情，显示新上传的文件
+      getCourseDetail();
       return true;
     }
 
-    console.log(currentChapter.value);
-   
-
-    // 判断是否需要分片上传(大于5MB)
-    const needMultipart = shouldUseMultipart(file.raw);
+    // 初始化分片上传
+    const timestamp = new Date().getTime();
+    const uniqueFileName = `${timestamp}-${file.name}`;
+    uploadStatus.value.fileName = uniqueFileName;
     
-    if (needMultipart) {
-      // 大文件分片上传流程
-      const initResult: any = await initUpload({
-        chapterId: currentChapter.value?.id,
-        fileHash,
-        fileName: file.name,
-        fileSize: file.raw.size,
-        type: getFileType(file.raw),
-        contentUrl: checkResult.data.url || ''
-      });
-
-      if (initResult.code !== 201) {
-        koiNoticeError("初始化上传失败: " + (initResult.msg || '未知错误'));
-        return false;
-      }
-
-
-
-      const { uploadID, objectName } = initResult.data;
-      const chunkSize = CHUNK_SIZE;
-      const chunks = Math.ceil(file.raw.size / chunkSize);
-      const parts = [];
-    
-
-      // 显示上传信息
-      koiNoticeSuccess(`文件将被分为 ${chunks} 个分片上传`);
-      
-      // 分片上传
-      for (let i = 0; i < chunks; i++) {
-        const start = i * chunkSize;
-        const end = Math.min(start + chunkSize, file.raw.size);
-        const chunk = file.raw.slice(start, end);
-        
-        console.log(`分片 ${i+1}/${chunks}: 开始位置=${start}, 结束位置=${end}, 大小=${chunk.size}`);
-        
-        if (!chunk || chunk.size === 0) {
-          koiNoticeError(`分片 ${i + 1} 为空，跳过上传`);
-          continue;
-        }
-        
-        try {
-          const partResult: any = await uploadPart({
-            objectName:objectName,
-            uploadId:uploadID,
-            partNumber: i + 1, // MinIO 分片编号从 1 开始
-            chunk: chunk
-          });
-
-          if (partResult.code !== 200) {
-            koiNoticeError(`分片 ${i + 1}/${chunks} 上传失败: ${partResult.msg || '未知错误'}`);
-            return false;
-          }
-          
-          // 添加已上传分片信息
-          parts.push({
-            etag: partResult.data.etag,
-            partNumber: partResult.data.part
-          });
-          
-          // 每 5 个分片或最后一个分片显示进度
-          if (i % 5 === 0 || i === chunks - 1) {
-            koiNoticeSuccess(`已上传 ${i+1}/${chunks} 个分片`);
-          }
-        } catch (err) {
-          console.error(`上传分片 ${i+1} 时发生错误:`, err);
-          koiNoticeError(`分片 ${i + 1}/${chunks} 上传异常，请重试`);
-          return false;
-        }
-      }
-
-      // 完成分片上传
-      try {
-        const completeResult: any = await completeUpload({
-          // uploadID,
-          fileHash,
-          parts
-        });
-
-        if (completeResult.code !== 200) {
-          koiNoticeError("完成上传失败: " + (completeResult.msg || '未知错误'));
-          return false;
-        }
-
-        koiNoticeSuccess("文件上传完成，处理中...");
-
-        // 处理上传成功后的逻辑
-        if (uploadType.value === 'material') {
-          const material = {
-            id: completeResult.data.fileId,
-            title: file.name,
-            url: completeResult.data.url,
-            fileSize: file.raw.size,
-            type: getFileType(file.raw),
-            courseId: courseData.value.id
-          };
-          const uploadRes: any = await uploadMaterial(material);
-          
-          if (uploadRes.code !== 201) {
-            koiNoticeError("添加资料信息失败");
-            return false;
-          }
-          
-          material.id = uploadRes.data.id;
-          courseData.value.materials.push(material);
-          koiNoticeSuccess("资料上传成功🌻");
-        } else {
-          const content = {
-            title: file.name,
-            contentUrl: completeResult.data.url,
-            type: getFileType(file.raw),
-            chapterId: currentChapter.value.id,
-            order: (currentChapter.value.contents?.length || 0) + 1
-          };
-          const uploadRes: any = await addChapterContent(content);
-          
-          if (uploadRes.code !== 201) {
-            koiNoticeError("内容添加失败");
-            return false;
-          }
-          
-          if (!currentChapter.value.contents) {
-            currentChapter.value.contents = [];
-          }
-          currentChapter.value.contents.push({
-            ...content,
-            id: uploadRes.data.id
-          });
-          koiNoticeSuccess("内容添加成功🌻");
-        }
-        return true;
-      } catch (err) {
-        console.error("完成上传时发生错误:", err);
-        koiNoticeError("完成上传失败，请重试");
-        return false;
-      }
-    }
-
-    // 小文件走原有的预签名上传逻辑
-    const res: any = await getPresignedUrl(file.name);
-    if (res.code !== 200) {
-      koiNoticeError("获取上传链接失败");
-      return false;
-    }
-
-    // 2. 使用预签名URL上传文件
-    const uploadResponse = await fetch(res.data.data.url, {
-      method: 'PUT',
-      body: file.raw,
-      headers: {
-        'Content-Type': file.raw.type,
-      },
-    });
-
-    if (!uploadResponse.ok) {
-      koiNoticeError("文件上传失败");
-      return false;
-    }
-
-    //处理type
-    const type = file.raw.type;
-    const typeMap: { [key: string]: string } = {
-      'image/jpeg': 'image',
-      'image/png': 'image',
-      'image/gif': 'image',
-      'application/pdf': 'pdf',
-      'application/msword': 'doc',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
-      'application/vnd.ms-excel': 'xls',
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
-      'application/vnd.ms-powerpoint': 'ppt',
-      'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'pptx',
-      'application/zip': 'zip',
-      'application/x-compressed': 'zip',
-      'application/x-7z-compressed': '7z',
-      'application/x-rar-compressed': 'rar',
-      'application/x-tar': 'tar',
-      'application/x-gzip': 'gz',
-      'application/x-bzip2': 'bz2',
-    };
-
+    let initUploadRes: any;
     if (uploadType.value === 'material') {
-      // 3. 上传成功后，将文件信息添加到课程资料列表
-      const material = {
-        id: 0,
-        title: file.name,
-        url: decodeURIComponent(uploadResponse.url.split('?')[0]),
-        fileSize: file.raw.size,
-        type: typeMap[type],
-        courseId: courseData.value.id
-      };
-      const uploadRes: any = await uploadMaterial(material);
-      material.id = uploadRes.data.id;
-      if (uploadRes.code !== 201) {
-        koiNoticeError("文件上传失败");
-        return false;
-      }
-      courseData.value.materials.push(material);
-      koiNoticeSuccess("文件上传成功🌻");
+      // 上传课程资料
+      initUploadRes = await initMaterialUpload({
+        courseId: Number(route.params.id),
+        fileHash: fileMd5,
+        fileName: uniqueFileName,
+        fileSize: file.size,
+        type: uploadStatus.value.fileType,
+        title: uploadStatus.value.title
+      });
     } else {
-      // 添加章节内容
-      
-      const content = {
-        title: file.name,
-        contentUrl: decodeURIComponent(uploadResponse.url.split('?')[0]),
-        type: typeMap[type],
+      // 上传章节内容
+      initUploadRes = await initUpload({
         chapterId: currentChapter.value.id,
-        order: currentChapter.value.contents.length + 1
-      };
-      // TODO: 调用添加章节内容的API
-      const uploadRes: any = await addChapterContent(content);
-      if (uploadRes.code !== 201) {
-        koiNoticeError("内容添加失败");
-        return false;
-      }
-      // 临时模拟添加内容
-      if (!currentChapter.value.contents) {
-        currentChapter.value.contents = [];
-      }
-      currentChapter.value.contents.push(content);
-      koiNoticeSuccess("内容添加成功🌻");
+        fileHash: fileMd5,
+        fileName: uniqueFileName,
+        fileSize: file.size,
+        type: uploadStatus.value.fileType,
+        contentUrl: ''
+      });
     }
+    
+    if (initUploadRes.code !== 201) {
+      koiNoticeError(initUploadRes.message || "初始化上传失败，请重试🌻");
+      return false;
+    }
+    
+    uploadStatus.value.uploadId = initUploadRes.data.uploadID;
+    
+    // 检查是否有断点续传的部分
+    const uploadedPartsRes: any = await getUploadedParts({
+      uploadId: uploadStatus.value.uploadId,
+      fileName: uploadStatus.value.fileName
+    });
+    
+    if (uploadedPartsRes.code === 201 && uploadedPartsRes.data.parts.length > 0) {
+      // 更新已上传的分片状态
+      uploadedPartsRes.data.parts.forEach((part: any) => {
+        const chunkIndex = part.partNumber - 1;
+        if (chunkIndex >= 0 && chunkIndex < uploadStatus.value.chunks.length) {
+          uploadStatus.value.chunks[chunkIndex].status = 'success';
+          uploadStatus.value.chunks[chunkIndex].progress = 100;
+          uploadStatus.value.chunks[chunkIndex].etag = part.etag;
+          uploadStatus.value.uploadedSize += (uploadStatus.value.chunks[chunkIndex].end - uploadStatus.value.chunks[chunkIndex].start);
+        }
+      });
+      
+      // 更新总体进度
+      updateTotalProgress();
+    }
+    
+    // 开始上传分片
+    isUploading.value = true;
+    uploadStatus.value.startTime = Date.now();
+    await uploadChunks();
+    
     return true;
-  } catch (error) {
-    console.error('上传错误:', error);
+  } catch (error: any) {
+    console.error("文件上传失败:", error);
+    uploadStatus.value.status = 'error';
+    uploadStatus.value.errorMessage = error.message || "文件上传失败";
     koiNoticeError("文件上传失败，请重试🌻");
     return false;
+  }
+};
+
+// 重置上传状态
+const resetUploadStatus = (file: File) => {
+  // 取消所有进行中的请求
+  abortControllers.forEach(controller => controller.abort());
+  abortControllers.clear();
+  
+  // 计算分片数量和每个分片的大小
+  const chunks = Math.ceil(file.size / CHUNK_SIZE);
+  const chunksArray = [];
+  
+  for (let i = 0; i < chunks; i++) {
+    const start = i * CHUNK_SIZE;
+    const end = Math.min(file.size, start + CHUNK_SIZE);
+    chunksArray.push({
+      index: i,
+      start,
+      end,
+      progress: 0,
+      status: 'waiting' as const,
+      etag: ''
+    });
+  }
+  
+  // 重置上传状态
+  uploadStatus.value = {
+    file,
+    fileName: '',
+    fileHash: '',
+    uploadId: '',
+    chunkSize: CHUNK_SIZE,
+    chunks: chunksArray,
+    progress: 0,
+    status: 'waiting',
+    uploadedSize: 0,
+    totalSize: file.size,
+    title: '',
+    fileType: '',
+    speed: 0,
+    startTime: 0,
+    currentTime: 0,
+    remainingTime: 0,
+    errorMessage: ''
+  };
+  
+  isUploading.value = false;
+  isPaused.value = false;
+};
+
+// 上传分片
+const uploadChunks = async (maxConcurrent = 3) => {
+  const pendingChunks = uploadStatus.value.chunks.filter(chunk => chunk.status === 'waiting');
+  let activeUploads = 0;
+  
+  const uploadChunk = async (chunk: typeof uploadStatus.value.chunks[0]) => {
+    try {
+      if (isPaused.value) return;
+      
+      chunk.status = 'uploading';
+      activeUploads++;
+      
+      // 获取分片上传的预签名URL
+      const presignedUrlRes: any = await getChunkPresignedUrl({
+        uploadId: uploadStatus.value.uploadId,
+        fileName: uploadStatus.value.fileName,
+        partNumber: chunk.index + 1
+      });
+      
+      if (presignedUrlRes.code !== 200) {
+        throw new Error(presignedUrlRes.message || "获取上传链接失败");
+      }
+      
+      const presignedUrl = presignedUrlRes.data.data.presignedUrl;
+      
+      // 创建 AbortController 用于取消请求
+      const controller = new AbortController();
+      abortControllers.set(chunk.index, controller);
+      
+      // 上传分片
+      const chunkData = uploadStatus.value.file!.slice(chunk.start, chunk.end);
+      const uploadStartTime = Date.now();
+      
+      console.log(presignedUrl)
+
+      const uploadResponse = await axios.put(presignedUrl, chunkData, {
+        headers: {
+          'Content-Type': 'application/octet-stream'
+        },
+        signal: controller.signal,
+        onUploadProgress: (progressEvent: any) => {
+          const percentCompleted = Math.round((progressEvent.loaded * 100) / (progressEvent.total || 1));
+          chunk.progress = percentCompleted;
+          
+          // 计算上传速度
+          const currentTime = Date.now();
+          const timeElapsed = (currentTime - uploadStartTime) / 1000; // 转换为秒
+          if (timeElapsed > 0) {
+            uploadStatus.value.speed = Math.round(progressEvent.loaded / timeElapsed); // 字节/秒
+          }
+          
+          updateTotalProgress();
+        }
+      });
+      
+      // 上传成功
+      chunk.status = 'success';
+      chunk.progress = 100;
+      chunk.etag = uploadResponse.headers.etag || uploadResponse.headers['ETag'];
+      
+      // 如果 ETag 被引号包围，去掉引号
+      if (chunk.etag && (chunk.etag.startsWith('"') && chunk.etag.endsWith('"'))) {
+        chunk.etag = chunk.etag.substring(1, chunk.etag.length - 1);
+      }
+      
+      // 更新已上传大小
+      uploadStatus.value.uploadedSize += (chunk.end - chunk.start);
+      
+      // 移除 AbortController
+      abortControllers.delete(chunk.index);
+      
+      activeUploads--;
+      
+      // 检查是否有更多分片需要上传
+      const nextChunk = pendingChunks.shift();
+      if (nextChunk) {
+        await uploadChunk(nextChunk);
+      } else if (activeUploads === 0) {
+        // 所有分片上传完成
+        await completeUpload();
+      }
+    } catch (error: any) {
+      if (error.name === 'AbortError') {
+        console.log('分片上传已取消');
+        chunk.status = 'waiting';
+      } else {
+        console.error(`分片 ${chunk.index + 1} 上传失败:`, error);
+        chunk.status = 'error';
+        uploadStatus.value.status = 'error';
+        uploadStatus.value.errorMessage = `分片 ${chunk.index + 1} 上传失败: ${error.message || '未知错误'}`;
+      }
+      
+      activeUploads--;
+      abortControllers.delete(chunk.index);
+    }
+  };
+  
+  // 初始启动最大并发数的上传
+  const initialChunks = pendingChunks.splice(0, maxConcurrent);
+  await Promise.all(initialChunks.map(chunk => uploadChunk(chunk)));
+};
+
+// 更新总体上传进度
+const updateTotalProgress = () => {
+  if (uploadStatus.value.totalSize === 0) return;
+  
+  // 计算总体进度
+  const totalProgress = uploadStatus.value.chunks.reduce((acc, chunk) => {
+    const chunkSize = chunk.end - chunk.start;
+    return acc + (chunk.progress * chunkSize / uploadStatus.value.totalSize);
+  }, 0);
+  
+  uploadStatus.value.progress = Math.floor(totalProgress);
+  
+  // 更新剩余时间估计
+  uploadStatus.value.currentTime = Date.now();
+  const elapsedTime = (uploadStatus.value.currentTime - uploadStatus.value.startTime) / 1000; // 秒
+  
+  if (uploadStatus.value.progress > 0 && elapsedTime > 0) {
+    const remainingProgress = 100 - uploadStatus.value.progress;
+    const progressPerSecond = uploadStatus.value.progress / elapsedTime;
+    if (progressPerSecond > 0) {
+      uploadStatus.value.remainingTime = Math.ceil(remainingProgress / progressPerSecond);
+    }
+  }
+};
+
+// 完成上传
+const completeUpload = async () => {
+  try {
+    // 验证所有分片是否都上传成功
+    const allSuccess = uploadStatus.value.chunks.every(chunk => chunk.status === 'success');
+    if (!allSuccess) {
+      throw new Error("部分分片上传失败，请重试");
+    }
+    
+    // 准备提交的分片信息
+    const parts = uploadStatus.value.chunks.map(chunk => ({
+      partNumber: chunk.index + 1,
+      etag: chunk.etag
+    }));
+    
+    let completeRes: any;
+    
+    console.log(uploadStatus.value)
+
+    if (uploadType.value === 'material') {
+      // 完成课程资料上传
+      completeRes = await completeMultipartUpload({
+        uploadId: uploadStatus.value.uploadId,
+        fileName: uploadStatus.value.fileName,
+        parts,
+        courseId: Number(route.params.id),
+        fileHash: uploadStatus.value.fileHash,
+        title: uploadStatus.value.title,
+        type: uploadStatus.value.fileType
+      });
+    } else {
+      // 完成章节内容上传
+      completeRes = await completeMultipartUpload({
+        uploadId: uploadStatus.value.uploadId,
+        fileName: uploadStatus.value.fileName,
+        parts,
+        chapterId: currentChapter.value.id,
+        fileHash: uploadStatus.value.fileHash,
+        title: uploadStatus.value.title,
+        type: uploadStatus.value.fileType
+      });
+    }
+    
+    if (completeRes.code !== 201) {
+      throw new Error(completeRes.message || "完成上传失败");
+    }
+    
+    uploadStatus.value.status = 'success';
+    koiNoticeSuccess("文件上传成功🌻");
+    
+    // 更新课程详情，显示新上传的文件
+    getCourseDetail();
+    
+    // 关闭上传对话框
+    dialogVisible.value = false;
+    uploadRef.value?.clearFiles();
+    isUploading.value = false;
+    
+    return true;
+  } catch (error: any) {
+    console.error("完成上传失败:", error);
+    uploadStatus.value.status = 'error';
+    uploadStatus.value.errorMessage = error.message || "完成上传失败";
+    koiNoticeError("完成上传失败，请重试🌻");
+    return false;
+  }
+};
+
+// 暂停上传
+const pauseUpload = () => {
+  isPaused.value = true;
+  uploadStatus.value.status = 'paused';
+  
+  // 取消所有进行中的请求
+  abortControllers.forEach(controller => controller.abort());
+};
+
+// 恢复上传
+const resumeUpload = async () => {
+  isPaused.value = false;
+  uploadStatus.value.status = 'uploading';
+  
+  // 重新上传所有等待中的分片
+  await uploadChunks();
+};
+
+// 取消上传
+const cancelUpload = async () => {
+  try {
+    // 取消所有进行中的请求
+    abortControllers.forEach(controller => controller.abort());
+    abortControllers.clear();
+    
+    // 如果有 uploadId，向服务器发送取消请求
+    if (uploadStatus.value.uploadId) {
+      await abortMultipartUpload({
+        uploadId: uploadStatus.value.uploadId,
+        fileName: uploadStatus.value.fileName
+      });
+    }
+    
+    resetUploadStatus(uploadStatus.value.file!);
+    koiNoticeSuccess("上传已取消🌻");
+    dialogVisible.value = false;
+    return true;
+  } catch (error: any) {
+    console.error("取消上传失败:", error);
+    koiNoticeError("取消上传失败，请重试🌻");
+    return false;
+  }
+};
+
+// 格式化上传速度显示
+const formatSpeed = (speed: number): string => {
+  if (speed < 1024) {
+    return `${speed} B/s`;
+  } else if (speed < 1024 * 1024) {
+    return `${(speed / 1024).toFixed(2)} KB/s`;
+  } else {
+    return `${(speed / (1024 * 1024)).toFixed(2)} MB/s`;
+  }
+};
+
+// 格式化剩余时间显示
+const formatRemainingTime = (seconds: number): string => {
+  if (seconds < 60) {
+    return `${seconds}秒`;
+  } else if (seconds < 3600) {
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    return `${minutes}分${remainingSeconds}秒`;
+  } else {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    return `${hours}小时${minutes}分`;
+  }
+};
+
+// 处理文件选择
+const handleFileChange = async (file: any) => {
+  const isSuccess = await handleFileUpload(file.raw);
+  if (isSuccess && uploadStatus.value.status === 'success') {
+    dialogVisible.value = false;
+    // 清空上传列表
+    uploadRef.value?.clearFiles();
   }
 };
 
@@ -796,17 +1082,6 @@ const handleCoverImageUpdate = (newCoverImage: string) => {
         koiMsgError("封面更新失败");
       });
   }
-};
-
-// 处理文件选择
-const handleFileChange = async (file: File) => {
-  const isSuccess = await handleFileUpload(file);
-  if (isSuccess) {
-    dialogVisible.value = false;
-    // 清空上传列表
-    uploadRef.value?.clearFiles();
-  }
-
 };
 
 const userStore = useUserStore();

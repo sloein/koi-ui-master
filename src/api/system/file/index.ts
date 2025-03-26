@@ -1,5 +1,5 @@
 import koi from "@/utils/axios.ts";
-import axios from "axios";
+
 
 // 获取预上传签名URL
 export const getPresignedUrl = (fileName: any) => {
@@ -38,39 +38,55 @@ export function initUpload(data: {
   return koi.post("/chapter/multipart/init", data);
 }
 
-export async function uploadPart(data: {
-  objectName:string,
-  uploadId: string;
-  partNumber: number;
-  chunk: File | Blob;
-
+// 初始化课程资料分片上传
+export function initMaterialUpload(data: {
+  courseId: number;
+  fileHash: string;
+  fileName: string;
+  fileSize: number;
+  type: string;
+  title: string;
 }) {
-  const formData = new FormData();
-  formData.append('chunk', data.chunk);
-  formData.append('bucketName', 'studysystem');
-  formData.append('objectName', data.objectName);
-  formData.append('uploadID', data.uploadId); // 注意这里是 uploadID 而不是 uploadId
-  formData.append('partNumber', data.partNumber.toString());
-  
-  const response = await axios.post('/api/chapter/multipart/upload', formData, {
-    headers: {
-      'Content-Type': 'multipart/form-data'
-    }
-  });
-
-  return response.data;
+  return koi.post("/minio/multipart/init", data);
 }
 
- 
-// 完成分片上传
-export function completeUpload(data: {
+// 获取上传分片的预签名URL
+export function getChunkPresignedUrl(params: {
   uploadId: string;
-  fileHash: string;
-  parts: Array<{
-    etag: string;
-    partNumber: number;
-  }>;
+  fileName: string;
+  partNumber: number;
 }) {
-  return koi.post("/chapter/multipart/complete", data);
-}    
+  return koi.get("/minio/multipart/presignedUrl", params);
+}
+
+// 获取已上传的分片列表
+export function getUploadedParts(params: {
+  uploadId: string;
+  fileName: string;
+}) {
+  return koi.get("/minio/multipart/listParts", params);
+}
+
+// 合并分片请求
+export function completeMultipartUpload(data: {
+  uploadId: string;
+  fileName: string;
+  parts: { partNumber: number; etag: string }[];
+  courseId?: number;
+  chapterId?: number;
+  fileHash: string;
+  title: string;
+  type: string;
+}) {
+  return koi.post("/minio/multipart/complete", data);
+}
+
+// 取消分片上传
+export function abortMultipartUpload(data: {
+  uploadId: string;
+  fileName: string;
+}) {
+  return koi.post("/minio/multipart/abort", data);
+}
+
 

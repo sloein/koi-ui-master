@@ -10,7 +10,7 @@ import router from "@/routers/index.ts";
 const config = {
   // 接口请求的地址
   baseURL: import.meta.env.VITE_WEB_BASE_API,
-  timeout: 10000
+  timeout: 20000
 };
 // 返回值类型
 export interface Result<T = any> {

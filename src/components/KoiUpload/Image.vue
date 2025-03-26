@@ -147,6 +147,8 @@ const handleHttpUpload = async (options: UploadRequestOptions) => {
       return false;
     }
  
+    console.log("uploadResponse",uploadResponse.headers.get('etag'))
+
     // 3. 更新图片URL，服务器基础路径 + 图片路径  
     const imageUrl = decodeURIComponent(uploadResponse.url.split('?')[0]);
     
