@@ -699,9 +699,9 @@ const handleFileUpload = async (file: File) => {
       koiNoticeError(initUploadRes.message || "初始化上传失败，请重试🌻");
       return false;
     }
-    
-    uploadStatus.value.uploadId = initUploadRes.data.uploadID;
-    
+    console.log("initUploadRes.data", initUploadRes.data)
+    uploadStatus.value.uploadId = initUploadRes.data.data.uploadId
+    console.log("uploadStatus.value", uploadStatus.value)
     // 检查是否有断点续传的部分
     const uploadedPartsRes: any = await getUploadedParts({
       uploadId: uploadStatus.value.uploadId,

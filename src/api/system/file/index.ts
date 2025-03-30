@@ -35,7 +35,7 @@ export function initUpload(data: {
   type: string;
   contentUrl: string;
 }) {
-  return koi.post("/chapter/multipart/init", data);
+  return koi.post("/minio/multipart/init", data);
 }
 
 // 初始化课程资料分片上传
