@@ -228,7 +228,7 @@
           </div>
           <template #tip>
             <div class="el-upload__tip">
-              <p>文件大小超过5MB将自动使用分片上传</p>
+              <p>文件大小超过2MB将自动使用分片上传</p>
               <p v-if="uploadType === 'content'">只允许上传视频和文档文件</p>
             </div>
           </template>
@@ -322,7 +322,7 @@ const route = useRoute();
 const activeChapters = ref([]);
 
 // 文件上传相关常量
-const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB
+const CHUNK_SIZE = 2 * 1024 * 1024; // 5MB
 const MAX_DIRECT_UPLOAD_SIZE = 5 * 1024 * 1024; // 5MB，小于这个大小的文件直接上传
 
 // 课程数据
@@ -602,6 +602,7 @@ const calculateMD5 = async (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
     const chunkSize = 2 * 1024 * 1024; // 2MB 分片
     const chunks = Math.ceil(file.size / chunkSize);
+    console.log('chunks', chunks)
     let currentChunk = 0;
     const spark = new SparkMD5.ArrayBuffer();
     const reader = new FileReader();
@@ -788,105 +789,132 @@ const resetUploadStatus = (file: File) => {
 };
 
 // 上传分片
-const uploadChunks = async (maxConcurrent = 3) => {
-  const pendingChunks = uploadStatus.value.chunks.filter(chunk => chunk.status === 'waiting');
-  let activeUploads = 0;
+const uploadChunks = async () => {
+  // 获取所有等待上传的分片
+  const pendingChunks = [...uploadStatus.value.chunks].filter(chunk => chunk.status === 'waiting');
+  console.log('待上传分片:', pendingChunks.map(chunk => ({ index: chunk.index, partNumber: chunk.index + 1 })));
   
-  const uploadChunk = async (chunk: typeof uploadStatus.value.chunks[0]) => {
-    try {
-      if (isPaused.value) return;
-      
-      chunk.status = 'uploading';
-      activeUploads++;
-      
-      // 获取分片上传的预签名URL
-      const presignedUrlRes: any = await getChunkPresignedUrl({
-        uploadId: uploadStatus.value.uploadId,
-        fileName: uploadStatus.value.fileName,
-        partNumber: chunk.index + 1
-      });
-      
-      if (presignedUrlRes.code !== 200) {
-        throw new Error(presignedUrlRes.message || "获取上传链接失败");
+  // 同时上传的分片数量
+  const maxConcurrent = 3;
+  let activeTasks = 0;
+  let currentIndex = 0;
+  
+  return new Promise<void>((resolve) => {
+    // 启动上传任务
+    const startUploadTasks = () => {
+      // 当所有分片都处理完毕时结束
+      if (currentIndex >= pendingChunks.length && activeTasks === 0) {
+        console.log('所有分片上传完成');
+        completeUpload().then(() => resolve());
+        return;
       }
       
-      const presignedUrl = presignedUrlRes.data.data.presignedUrl;
-      
-      // 创建 AbortController 用于取消请求
-      const controller = new AbortController();
-      abortControllers.set(chunk.index, controller);
-      
-      // 上传分片
-      const chunkData = uploadStatus.value.file!.slice(chunk.start, chunk.end);
-      const uploadStartTime = Date.now();
-      
-      console.log(presignedUrl)
-
-      const uploadResponse = await axios.put(presignedUrl, chunkData, {
-        headers: {
-          'Content-Type': 'application/octet-stream'
-        },
-        signal: controller.signal,
-        onUploadProgress: (progressEvent: any) => {
-          const percentCompleted = Math.round((progressEvent.loaded * 100) / (progressEvent.total || 1));
-          chunk.progress = percentCompleted;
-          
-          // 计算上传速度
-          const currentTime = Date.now();
-          const timeElapsed = (currentTime - uploadStartTime) / 1000; // 转换为秒
-          if (timeElapsed > 0) {
-            uploadStatus.value.speed = Math.round(progressEvent.loaded / timeElapsed); // 字节/秒
-          }
-          
-          updateTotalProgress();
+      // 当暂停时不再启动新任务
+      if (isPaused.value) {
+        if (activeTasks === 0) {
+          resolve();
         }
-      });
-      
-      // 上传成功
-      chunk.status = 'success';
-      chunk.progress = 100;
-      chunk.etag = uploadResponse.headers.etag || uploadResponse.headers['ETag'];
-      
-      // 如果 ETag 被引号包围，去掉引号
-      if (chunk.etag && (chunk.etag.startsWith('"') && chunk.etag.endsWith('"'))) {
-        chunk.etag = chunk.etag.substring(1, chunk.etag.length - 1);
+        return;
       }
       
-      // 更新已上传大小
-      uploadStatus.value.uploadedSize += (chunk.end - chunk.start);
-      
-      // 移除 AbortController
-      abortControllers.delete(chunk.index);
-      
-      activeUploads--;
-      
-      // 检查是否有更多分片需要上传
-      const nextChunk = pendingChunks.shift();
-      if (nextChunk) {
-        await uploadChunk(nextChunk);
-      } else if (activeUploads === 0) {
-        // 所有分片上传完成
-        await completeUpload();
+      // 尝试启动新任务，直到达到最大并发数或没有更多分片
+      while (activeTasks < maxConcurrent && currentIndex < pendingChunks.length) {
+        const chunk = pendingChunks[currentIndex];
+        currentIndex++;
+        activeTasks++;
+        
+        uploadChunk(chunk).finally(() => {
+          activeTasks--;
+          // 尝试启动下一批任务
+          startUploadTasks();
+        });
       }
-    } catch (error: any) {
-      if (error.name === 'AbortError') {
-        console.log('分片上传已取消');
-        chunk.status = 'waiting';
-      } else {
-        console.error(`分片 ${chunk.index + 1} 上传失败:`, error);
-        chunk.status = 'error';
-        uploadStatus.value.status = 'error';
-        uploadStatus.value.errorMessage = `分片 ${chunk.index + 1} 上传失败: ${error.message || '未知错误'}`;
-      }
-      
-      activeUploads--;
-      abortControllers.delete(chunk.index);
+    };
+    
+    // 开始上传
+    startUploadTasks();
+  });
+};
+
+const uploadChunk = async (chunk: typeof uploadStatus.value.chunks[0]) => {
+  try {
+    if (isPaused.value) return;
+    
+    console.log(`开始上传分片 index=${chunk.index}, partNumber=${chunk.index + 1}`);
+    chunk.status = 'uploading';
+    
+    // 获取分片上传的预签名URL
+    const presignedUrlRes: any = await getChunkPresignedUrl({
+      uploadId: uploadStatus.value.uploadId,
+      fileName: uploadStatus.value.fileName,
+      partNumber: chunk.index + 1
+    });
+    
+    if (presignedUrlRes.code !== 200) {
+      throw new Error(presignedUrlRes.message || "获取上传链接失败");
     }
-  };
-  
-  // 初始启动最大并发数的上传
-  const initialChunks = pendingChunks.splice(0, maxConcurrent);
-  await Promise.all(initialChunks.map(chunk => uploadChunk(chunk)));
+    
+    const presignedUrl = presignedUrlRes.data.data.presignedUrl;
+    
+    // 创建 AbortController 用于取消请求
+    const controller = new AbortController();
+    abortControllers.set(chunk.index, controller);
+    
+    // 上传分片
+    const chunkData = uploadStatus.value.file!.slice(chunk.start, chunk.end);
+    const uploadStartTime = Date.now();
+    
+    const uploadResponse = await axios.put(presignedUrl, chunkData, {
+      headers: {
+        'Content-Type': 'application/octet-stream'
+      },
+      signal: controller.signal,
+      onUploadProgress: (progressEvent: any) => {
+        const percentCompleted = Math.round((progressEvent.loaded * 100) / (progressEvent.total || 1));
+        chunk.progress = percentCompleted;
+        
+        // 计算上传速度
+        const currentTime = Date.now();
+        const timeElapsed = (currentTime - uploadStartTime) / 1000; // 转换为秒
+        if (timeElapsed > 0) {
+          uploadStatus.value.speed = Math.round(progressEvent.loaded / timeElapsed); // 字节/秒
+        }
+        
+        updateTotalProgress();
+      }
+    });
+    
+    // 上传成功
+    chunk.status = 'success';
+    chunk.progress = 100;
+    chunk.etag = uploadResponse.headers.etag || uploadResponse.headers['ETag'];
+    
+    // 如果 ETag 被引号包围，去掉引号
+    if (chunk.etag && (chunk.etag.startsWith('"') && chunk.etag.endsWith('"'))) {
+      chunk.etag = chunk.etag.substring(1, chunk.etag.length - 1);
+    }
+    
+    // 更新已上传大小
+    uploadStatus.value.uploadedSize += (chunk.end - chunk.start);
+    
+    // 移除 AbortController
+    abortControllers.delete(chunk.index);
+    
+    console.log(`分片上传成功 index=${chunk.index}, partNumber=${chunk.index + 1}, etag=${chunk.etag}`);
+    
+  } catch (error: any) {
+    if (error.name === 'AbortError') {
+      console.log(`分片上传已取消 index=${chunk.index}`);
+      chunk.status = 'waiting';
+    } else {
+      console.error(`分片 ${chunk.index + 1} 上传失败:`, error);
+      chunk.status = 'error';
+      uploadStatus.value.status = 'error';
+      uploadStatus.value.errorMessage = `分片 ${chunk.index + 1} 上传失败: ${error.message || '未知错误'}`;
+    }
+    
+    abortControllers.delete(chunk.index);
+  }
 };
 
 // 更新总体上传进度
