@@ -298,15 +298,14 @@ import { getById, update, updateChapterOrder, updateChapterTitle } from "@/api/s
 import { 
   checkFile, 
   deleteMaterial, 
-  getPresignedDownloadUrl, 
-  initUpload,
-  initMaterialUpload,
-  getChunkPresignedUrl,
-  getUploadedParts,
+  getPresignedDownloadUrl,
+  initMultipartUpload,
+  uploadPart,
   completeMultipartUpload,
   abortMultipartUpload
 } from '@/api/system/file';
 import KoiCard from "@/components/KoiCard/Index.vue";
+import router from "@/routers";
 import useUserStore from "@/stores/modules/user";
 import { koiMsgBox, koiMsgError, koiMsgSuccess, koiNoticeError, koiNoticeSuccess } from "@/utils/koi.ts";
 import { enableRowDrop } from '@/utils/sortable';
@@ -317,12 +316,11 @@ import SparkMD5 from 'spark-md5';
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 
-
 const route = useRoute();
 const activeChapters = ref([]);
 
 // 文件上传相关常量
-const CHUNK_SIZE = 2 * 1024 * 1024; // 5MB
+const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB
 const MAX_DIRECT_UPLOAD_SIZE = 5 * 1024 * 1024; // 5MB，小于这个大小的文件直接上传
 
 // 课程数据
@@ -351,9 +349,7 @@ const currentChapter = ref<any>(null); // 当前选中的章节
 const uploadStatus = ref({
   file: null as File | null,
   fileName: '',
-  fileHash: '',
   uploadId: '',
-  chunkSize: CHUNK_SIZE,
   chunks: [] as {
     index: number,
     start: number,
@@ -580,8 +576,7 @@ const viewContent = (content: any) => {
 
 // 查看作业详情
 const viewAssignment = (assignment: any) => {
-  // TODO: 实现查看作业详情逻辑
-  console.log('查看作业:', assignment);
+  router.push(`/assignment/detail/${assignment.id}`);
 };
 
 // 处理资料上传
@@ -597,43 +592,6 @@ const handleAddContent = (chapter: any) => {
   dialogVisible.value = true;
 };
 
-// 计算文件 MD5
-const calculateMD5 = async (file: File): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const chunkSize = 2 * 1024 * 1024; // 2MB 分片
-    const chunks = Math.ceil(file.size / chunkSize);
-    console.log('chunks', chunks)
-    let currentChunk = 0;
-    const spark = new SparkMD5.ArrayBuffer();
-    const reader = new FileReader();
-
-    reader.onload = (e) => {
-      const buffer = e.target?.result as ArrayBuffer;
-      spark.append(buffer);
-      currentChunk++;
-
-      if (currentChunk < chunks) {
-        // 继续读取下一个分片
-        loadNext();
-      } else {
-        // 所有分片读取完成，计算最终的 MD5
-        resolve(spark.end());
-      }
-    };
-
-    reader.onerror = reject;
-
-    const loadNext = () => {
-      const start = currentChunk * chunkSize;
-      const end = Math.min(start + chunkSize, file.size);
-      reader.readAsArrayBuffer(file.slice(start, end));
-    };
-
-    // 开始读取第一个分片
-    loadNext();
-  });
-};
-
 // 处理文件上传
 const handleFileUpload = async (file: File) => {
   try {
@@ -646,97 +604,188 @@ const handleFileUpload = async (file: File) => {
     // 重置上传状态
     resetUploadStatus(file);
     
-    // 计算文件 MD5
-    uploadStatus.value.status = 'uploading';
-    const fileMd5 = await calculateMD5(file);
-    uploadStatus.value.fileHash = fileMd5;
-    
     // 文件标题默认使用文件名（不包含扩展名）
     uploadStatus.value.title = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
     uploadStatus.value.fileType = getFileType(file);
-
-    // 检查文件是否存在
-    const checkFileRes: any = await checkFile({
-      fileHash: fileMd5,
-      fileName: file.name
-    });
-    
-    if (checkFileRes.data.exists) {
-      koiNoticeSuccess("文件已存在，无需重新上传🌻");
-      // 更新课程详情，显示新上传的文件
-      getCourseDetail();
-      return true;
-    }
 
     // 初始化分片上传
     const timestamp = new Date().getTime();
     const uniqueFileName = `${timestamp}-${file.name}`;
     uploadStatus.value.fileName = uniqueFileName;
     
-    let initUploadRes: any;
-    if (uploadType.value === 'material') {
-      // 上传课程资料
-      initUploadRes = await initMaterialUpload({
-        courseId: Number(route.params.id),
-        fileHash: fileMd5,
-        fileName: uniqueFileName,
-        fileSize: file.size,
-        type: uploadStatus.value.fileType,
-        title: uploadStatus.value.title
-      });
-    } else {
-      // 上传章节内容
-      initUploadRes = await initUpload({
-        chapterId: currentChapter.value.id,
-        fileHash: fileMd5,
-        fileName: uniqueFileName,
-        fileSize: file.size,
-        type: uploadStatus.value.fileType,
-        contentUrl: ''
-      });
-    }
-    
-    if (initUploadRes.code !== 201) {
-      koiNoticeError(initUploadRes.message || "初始化上传失败，请重试🌻");
-      return false;
-    }
-    console.log("initUploadRes.data", initUploadRes.data)
-    uploadStatus.value.uploadId = initUploadRes.data.data.uploadId
-    console.log("uploadStatus.value", uploadStatus.value)
-    // 检查是否有断点续传的部分
-    const uploadedPartsRes: any = await getUploadedParts({
-      uploadId: uploadStatus.value.uploadId,
-      fileName: uploadStatus.value.fileName
-    });
-    
-    if (uploadedPartsRes.code === 201 && uploadedPartsRes.data.parts.length > 0) {
-      // 更新已上传的分片状态
-      uploadedPartsRes.data.parts.forEach((part: any) => {
-        const chunkIndex = part.partNumber - 1;
-        if (chunkIndex >= 0 && chunkIndex < uploadStatus.value.chunks.length) {
-          uploadStatus.value.chunks[chunkIndex].status = 'success';
-          uploadStatus.value.chunks[chunkIndex].progress = 100;
-          uploadStatus.value.chunks[chunkIndex].etag = part.etag;
-          uploadStatus.value.uploadedSize += (uploadStatus.value.chunks[chunkIndex].end - uploadStatus.value.chunks[chunkIndex].start);
-        }
+    try {
+      // 设置上传状态
+      isUploading.value = true;
+      uploadStatus.value.status = 'uploading';
+      uploadStatus.value.startTime = Date.now();
+      
+      // 初始化分片上传
+      const initResponse = await initMultipartUpload({
+        filename: file.name,
+        contentType: file.type
       });
       
-      // 更新总体进度
-      updateTotalProgress();
+      if (initResponse.code !== 201) {
+        throw new Error('初始化上传失败');
+      }
+      
+      const initData = initResponse.data;
+      uploadStatus.value.uploadId = initData.uploadId;
+      
+      // 计算分片
+      const chunks = Math.ceil(file.size / CHUNK_SIZE);
+      
+      // 上传所有分片
+      const uploadPromises = [];
+      
+      for (let i = 0; i < chunks; i++) {
+        const start = i * CHUNK_SIZE;
+        const end = Math.min(file.size, start + CHUNK_SIZE);
+        const chunk = file.slice(start, end);
+        
+        uploadPromises.push(uploadChunk(chunk, i + 1, uploadStatus.value.uploadId, chunks));
+      }
+      
+      // 等待所有分片上传完成
+      const results = await Promise.allSettled(uploadPromises);
+      
+      // 检查是否有分片上传失败
+      const failedResults = results.filter(result => result.status === 'rejected');
+      if (failedResults.length > 0) {
+        throw new Error('部分分片上传失败');
+      }
+      
+      // 检查是否有分片返回 false
+      const failedChunks = results.filter(result => 
+        result.status === 'fulfilled' && result.value === false
+      );
+      if (failedChunks.length > 0) {
+        throw new Error('部分分片上传失败');
+      }
+      
+      // 完成分片上传
+      const completeResponse = await completeMultipartUpload({
+        chapterId: currentChapter.value.id,
+        uploadId: uploadStatus.value.uploadId,
+        key: initData.key,
+        etags: uploadStatus.value.chunks.map(chunk => chunk.etag)
+      });
+      
+      if (completeResponse.code !== 201) {
+        throw new Error('完成上传失败');
+      }
+      
+      const completeData = completeResponse.data;
+      
+      // 更新课程详情，显示新上传的文件
+      getCourseDetail();
+      
+      // 关闭上传对话框
+      dialogVisible.value = false;
+      uploadRef.value?.clearFiles();
+      isUploading.value = false;
+      
+      koiNoticeSuccess("文件上传成功🌻");
+      return true;
+      
+    } catch (error: any) {
+      console.error("文件上传失败:", error);
+      uploadStatus.value.status = 'error';
+      uploadStatus.value.errorMessage = error.message || "文件上传失败";
+      koiNoticeError("文件上传失败，请重试🌻");
+      
+      // 上传失败时清除弹窗内容
+      uploadRef.value?.clearFiles();
+      isUploading.value = false;
+      return false;
     }
-    
-    // 开始上传分片
-    isUploading.value = true;
-    uploadStatus.value.startTime = Date.now();
-    await uploadChunks();
-    
-    return true;
   } catch (error: any) {
     console.error("文件上传失败:", error);
     uploadStatus.value.status = 'error';
     uploadStatus.value.errorMessage = error.message || "文件上传失败";
     koiNoticeError("文件上传失败，请重试🌻");
+    
+    // 上传失败时清除弹窗内容
+    uploadRef.value?.clearFiles();
+    isUploading.value = false;
     return false;
+  }
+};
+
+// 上传单个分片
+const uploadChunk = async (chunk: Blob, partNumber: number, uploadId: string, totalChunks: number) => {
+  try {
+    if (isPaused.value) {
+      throw new Error('上传已暂停');
+    }
+    
+    const chunkIndex = partNumber - 1;
+    uploadStatus.value.chunks[chunkIndex].status = 'uploading';
+    
+    const formData = new FormData();
+    formData.append('file', chunk);
+    formData.append('partNumber', partNumber.toString());
+    formData.append('uploadId', uploadId);
+    
+    const controller = new AbortController();
+    abortControllers.set(chunkIndex, controller);
+    
+    const uploadStartTime = Date.now();
+    let lastLoaded = 0;
+    
+    const response: any = await uploadPart(formData, (progressEvent: any) => {
+      const loaded = progressEvent.loaded;
+      const total = progressEvent.total || chunk.size;
+      const percentCompleted = Math.round((loaded * 100) / total);
+      
+      // 更新分片进度
+      uploadStatus.value.chunks[chunkIndex].progress = percentCompleted;
+      
+      // 计算上传速度
+      const currentTime = Date.now();
+      const timeElapsed = (currentTime - uploadStartTime) / 1000; // 转换为秒
+      if (timeElapsed > 0) {
+        const speed = (loaded - lastLoaded) / timeElapsed; // 字节/秒
+        uploadStatus.value.speed = Math.round(speed);
+        lastLoaded = loaded;
+      }
+      
+      // 更新总体进度
+      updateTotalProgress();
+    });
+    
+    if (response.code !== 201) {
+      throw new Error(`上传分片 ${partNumber} 失败`);
+    }
+    
+    // 上传成功
+    uploadStatus.value.chunks[chunkIndex].status = 'success';
+    uploadStatus.value.chunks[chunkIndex].progress = 100;
+    uploadStatus.value.chunks[chunkIndex].etag = response.data.etag;
+    
+    // 更新已上传大小
+    uploadStatus.value.uploadedSize += chunk.size;
+    
+    // 移除 AbortController
+    abortControllers.delete(chunkIndex);
+    
+    return true;
+    
+  } catch (error: any) {
+    if (error.name === 'AbortError') {
+      uploadStatus.value.chunks[partNumber - 1].status = 'waiting';
+    } else {
+      uploadStatus.value.chunks[partNumber - 1].status = 'error';
+      uploadStatus.value.status = 'error';
+      uploadStatus.value.errorMessage = `分片 ${partNumber} 上传失败: ${error.message || '未知错误'}`;
+      
+      // 上传失败时清除弹窗内容
+      uploadRef.value?.clearFiles();
+      isUploading.value = false;
+    }
+    
+    abortControllers.delete(partNumber - 1);
+    throw error; // 抛出错误，让 Promise.allSettled 捕获
   }
 };
 
@@ -767,9 +816,7 @@ const resetUploadStatus = (file: File) => {
   uploadStatus.value = {
     file,
     fileName: '',
-    fileHash: '',
     uploadId: '',
-    chunkSize: CHUNK_SIZE,
     chunks: chunksArray,
     progress: 0,
     status: 'waiting',
@@ -786,135 +833,6 @@ const resetUploadStatus = (file: File) => {
   
   isUploading.value = false;
   isPaused.value = false;
-};
-
-// 上传分片
-const uploadChunks = async () => {
-  // 获取所有等待上传的分片
-  const pendingChunks = [...uploadStatus.value.chunks].filter(chunk => chunk.status === 'waiting');
-  console.log('待上传分片:', pendingChunks.map(chunk => ({ index: chunk.index, partNumber: chunk.index + 1 })));
-  
-  // 同时上传的分片数量
-  const maxConcurrent = 3;
-  let activeTasks = 0;
-  let currentIndex = 0;
-  
-  return new Promise<void>((resolve) => {
-    // 启动上传任务
-    const startUploadTasks = () => {
-      // 当所有分片都处理完毕时结束
-      if (currentIndex >= pendingChunks.length && activeTasks === 0) {
-        console.log('所有分片上传完成');
-        completeUpload().then(() => resolve());
-        return;
-      }
-      
-      // 当暂停时不再启动新任务
-      if (isPaused.value) {
-        if (activeTasks === 0) {
-          resolve();
-        }
-        return;
-      }
-      
-      // 尝试启动新任务，直到达到最大并发数或没有更多分片
-      while (activeTasks < maxConcurrent && currentIndex < pendingChunks.length) {
-        const chunk = pendingChunks[currentIndex];
-        currentIndex++;
-        activeTasks++;
-        
-        uploadChunk(chunk).finally(() => {
-          activeTasks--;
-          // 尝试启动下一批任务
-          startUploadTasks();
-        });
-      }
-    };
-    
-    // 开始上传
-    startUploadTasks();
-  });
-};
-
-const uploadChunk = async (chunk: typeof uploadStatus.value.chunks[0]) => {
-  try {
-    if (isPaused.value) return;
-    
-    console.log(`开始上传分片 index=${chunk.index}, partNumber=${chunk.index + 1}`);
-    chunk.status = 'uploading';
-    
-    // 获取分片上传的预签名URL
-    const presignedUrlRes: any = await getChunkPresignedUrl({
-      uploadId: uploadStatus.value.uploadId,
-      fileName: uploadStatus.value.fileName,
-      partNumber: chunk.index + 1
-    });
-    
-    if (presignedUrlRes.code !== 200) {
-      throw new Error(presignedUrlRes.message || "获取上传链接失败");
-    }
-    
-    const presignedUrl = presignedUrlRes.data.data.presignedUrl;
-    
-    // 创建 AbortController 用于取消请求
-    const controller = new AbortController();
-    abortControllers.set(chunk.index, controller);
-    
-    // 上传分片
-    const chunkData = uploadStatus.value.file!.slice(chunk.start, chunk.end);
-    const uploadStartTime = Date.now();
-    
-    const uploadResponse = await axios.put(presignedUrl, chunkData, {
-      headers: {
-        'Content-Type': 'application/octet-stream'
-      },
-      signal: controller.signal,
-      onUploadProgress: (progressEvent: any) => {
-        const percentCompleted = Math.round((progressEvent.loaded * 100) / (progressEvent.total || 1));
-        chunk.progress = percentCompleted;
-        
-        // 计算上传速度
-        const currentTime = Date.now();
-        const timeElapsed = (currentTime - uploadStartTime) / 1000; // 转换为秒
-        if (timeElapsed > 0) {
-          uploadStatus.value.speed = Math.round(progressEvent.loaded / timeElapsed); // 字节/秒
-        }
-        
-        updateTotalProgress();
-      }
-    });
-    
-    // 上传成功
-    chunk.status = 'success';
-    chunk.progress = 100;
-    chunk.etag = uploadResponse.headers.etag || uploadResponse.headers['ETag'];
-    
-    // 如果 ETag 被引号包围，去掉引号
-    if (chunk.etag && (chunk.etag.startsWith('"') && chunk.etag.endsWith('"'))) {
-      chunk.etag = chunk.etag.substring(1, chunk.etag.length - 1);
-    }
-    
-    // 更新已上传大小
-    uploadStatus.value.uploadedSize += (chunk.end - chunk.start);
-    
-    // 移除 AbortController
-    abortControllers.delete(chunk.index);
-    
-    console.log(`分片上传成功 index=${chunk.index}, partNumber=${chunk.index + 1}, etag=${chunk.etag}`);
-    
-  } catch (error: any) {
-    if (error.name === 'AbortError') {
-      console.log(`分片上传已取消 index=${chunk.index}`);
-      chunk.status = 'waiting';
-    } else {
-      console.error(`分片 ${chunk.index + 1} 上传失败:`, error);
-      chunk.status = 'error';
-      uploadStatus.value.status = 'error';
-      uploadStatus.value.errorMessage = `分片 ${chunk.index + 1} 上传失败: ${error.message || '未知错误'}`;
-    }
-    
-    abortControllers.delete(chunk.index);
-  }
 };
 
 // 更新总体上传进度
@@ -942,90 +860,20 @@ const updateTotalProgress = () => {
   }
 };
 
-// 完成上传
-const completeUpload = async () => {
-  try {
-    // 验证所有分片是否都上传成功
-    const allSuccess = uploadStatus.value.chunks.every(chunk => chunk.status === 'success');
-    if (!allSuccess) {
-      throw new Error("部分分片上传失败，请重试");
-    }
-    
-    // 准备提交的分片信息
-    const parts = uploadStatus.value.chunks.map(chunk => ({
-      partNumber: chunk.index + 1,
-      etag: chunk.etag
-    }));
-    
-    let completeRes: any;
-    
-    console.log(uploadStatus.value)
-
-    if (uploadType.value === 'material') {
-      // 完成课程资料上传
-      completeRes = await completeMultipartUpload({
-        uploadId: uploadStatus.value.uploadId,
-        fileName: uploadStatus.value.fileName,
-        parts,
-        courseId: Number(route.params.id),
-        fileHash: uploadStatus.value.fileHash,
-        title: uploadStatus.value.title,
-        type: uploadStatus.value.fileType
-      });
-    } else {
-      // 完成章节内容上传
-      completeRes = await completeMultipartUpload({
-        uploadId: uploadStatus.value.uploadId,
-        fileName: uploadStatus.value.fileName,
-        parts,
-        chapterId: currentChapter.value.id,
-        fileHash: uploadStatus.value.fileHash,
-        title: uploadStatus.value.title,
-        type: uploadStatus.value.fileType
-      });
-    }
-    
-    if (completeRes.code !== 201) {
-      throw new Error(completeRes.message || "完成上传失败");
-    }
-    
-    uploadStatus.value.status = 'success';
-    koiNoticeSuccess("文件上传成功🌻");
-    
-    // 更新课程详情，显示新上传的文件
-    getCourseDetail();
-    
-    // 关闭上传对话框
-    dialogVisible.value = false;
-    uploadRef.value?.clearFiles();
-    isUploading.value = false;
-    
-    return true;
-  } catch (error: any) {
-    console.error("完成上传失败:", error);
-    uploadStatus.value.status = 'error';
-    uploadStatus.value.errorMessage = error.message || "完成上传失败";
-    koiNoticeError("完成上传失败，请重试🌻");
-    return false;
-  }
-};
-
 // 暂停上传
 const pauseUpload = () => {
   isPaused.value = true;
-  uploadStatus.value.status = 'paused';
-  
   // 取消所有进行中的请求
   abortControllers.forEach(controller => controller.abort());
+  abortControllers.clear();
+  koiNoticeSuccess("上传已暂停🌻");
 };
 
 // 恢复上传
-const resumeUpload = async () => {
+const resumeUpload = () => {
   isPaused.value = false;
-  uploadStatus.value.status = 'uploading';
-  
-  // 重新上传所有等待中的分片
-  await uploadChunks();
+  // 重新开始上传
+  handleFileUpload(uploadStatus.value.file!);
 };
 
 // 取消上传
@@ -1035,17 +883,18 @@ const cancelUpload = async () => {
     abortControllers.forEach(controller => controller.abort());
     abortControllers.clear();
     
-    // 如果有 uploadId，向服务器发送取消请求
+    // 如果有 uploadId，向服务器发送中止请求
     if (uploadStatus.value.uploadId) {
-      await abortMultipartUpload({
-        uploadId: uploadStatus.value.uploadId,
-        fileName: uploadStatus.value.fileName
+      await abortMultipartUpload({ 
+        uploadId: uploadStatus.value.uploadId 
       });
     }
     
     resetUploadStatus(uploadStatus.value.file!);
     koiNoticeSuccess("上传已取消🌻");
     dialogVisible.value = false;
+    uploadRef.value?.clearFiles();
+    isUploading.value = false;
     return true;
   } catch (error: any) {
     console.error("取消上传失败:", error);
@@ -1185,6 +1034,22 @@ onMounted(() => {
 
     &:hover {
       background-color: var(--el-fill-color-light);
+    }
+  }
+
+  .upload-progress {
+    .chunks-progress {
+      margin-top: 20px;
+      
+      .chunk-item {
+        background-color: var(--el-fill-color-light);
+        padding: 10px;
+        border-radius: 4px;
+      }
+    }
+
+    .error-message {
+      margin-top: 20px;
     }
   }
 }

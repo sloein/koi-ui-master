@@ -156,20 +156,16 @@ class Yu {
     return this.instance.delete(url);
   };
   // 文件上传
-  upload = (url: string, file: any) => {
-    return new Promise((resolve, reject) => {
-      this.instance
-        .post(url, file, {
-          headers: {
-            "Content-Type": "multipart/form-data",
-          },
-        })
-        .then((res) => {
-          resolve(res);
-        })
-        .catch((error) => {
-          reject(error);
-        });
+  upload = (url: string, file: any, onProgress?: (progressEvent: any) => void) => {
+    return this.instance.post(url, file, {
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+      onUploadProgress: (progressEvent) => {
+        if (onProgress) {
+          onProgress(progressEvent);
+        }
+      }
     });
   };
   // 导出Excel
