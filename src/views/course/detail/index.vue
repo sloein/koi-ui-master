@@ -569,9 +569,29 @@ const handleDownloadMaterial = async (material: any) => {
 
 // 查看章节内容
 const viewContent = (content: any) => {
-
-  // TODO: 实现查看内容逻辑
   console.log('查看内容:', content);
+  
+  // 检查内容URL是否存在
+  if (!content.contentUrl) {
+    koiNoticeError("内容URL不存在，请刷新页面后重试🌻");
+    // 如果处于开发环境，输出更多调试信息
+    if (import.meta.env.DEV) {
+      console.error('内容URL为空:', content);
+    }
+    return;
+  }
+  
+  // 根据内容类型处理不同的查看逻辑
+  if (content.type === 'video') {
+    // 视频播放处理
+    window.open(content.contentUrl, '_blank');
+  } else if (content.type === 'pdf') {
+    // PDF查看处理
+    window.open(content.contentUrl, '_blank');
+  } else {
+    // 其他类型处理
+    window.open(content.contentUrl, '_blank');
+  }
 };
 
 // 查看作业详情
@@ -676,9 +696,51 @@ const handleFileUpload = async (file: File) => {
       }
       
       const completeData = completeResponse.data;
+      console.log('上传完成返回的数据:', completeData);
       
-      // 更新课程详情，显示新上传的文件
-      getCourseDetail();
+      // 将新上传的内容添加到当前章节的contents数组中
+      if (uploadType.value === 'content' && completeData) {
+        // 构建完整的内容对象
+        const fullContent = {
+          ...completeData,
+          contentUrl: completeData.contentUrl || completeData.url || '', // 确保contentUrl有值
+          title: completeData.title || uploadStatus.value.title || file.name,
+          type: completeData.type || uploadStatus.value.fileType || getFileType(file)
+        };
+        
+        console.log('完整的内容对象:', fullContent);
+        
+        // 暂存当前上传的内容，用于后续处理
+        const uploadedContent = fullContent;
+        
+        // 调用API获取最新课程数据
+        await getCourseDetail();
+        
+        // 在内存中更新刚上传的内容信息
+        // 查找当前章节
+        const chapter = courseData.value.chapters.find((ch: any) => ch.id === currentChapter.value.id);
+        if (chapter) {
+          // 查找是否有相同ID的内容，但contentUrl为空
+          const contentIndex = chapter.contents?.findIndex((content: any) => 
+            content.id === uploadedContent.id
+          );
+          
+          if (contentIndex !== undefined && contentIndex >= 0) {
+            // 如果找到相同ID的内容，检查是否需要更新contentUrl
+            if (!chapter.contents[contentIndex].contentUrl && uploadedContent.contentUrl) {
+              chapter.contents[contentIndex].contentUrl = uploadedContent.contentUrl;
+              console.log('已更新内容URL:', chapter.contents[contentIndex]);
+            }
+          } else if (chapter.contents) {
+            // 如果没找到相同ID的内容，则添加这个内容
+            chapter.contents.push(uploadedContent);
+            console.log('已添加新内容:', uploadedContent);
+          }
+        }
+      } else {
+        // 如果是材料上传，直接刷新课程数据
+        await getCourseDetail();
+      }
       
       // 关闭上传对话框
       dialogVisible.value = false;
